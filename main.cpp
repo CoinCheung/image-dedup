@@ -344,6 +344,20 @@ struct pair_t {
         return os;
     }
 
+    static vector<string> inds_to_strings_vector(const vector<sample_t>& samples, 
+            const vector<pair_t>& pairs_ind) {
+        vector<string> res;
+        stringstream ss;
+        for (auto &pair : pairs_ind) {
+            ss.str(""); ss.clear();
+            ss << samples[pair.i].first 
+                << "," << samples[pair.j].first 
+                << "," << pair.diff; 
+            res.emplace_back(ss.str());
+        }
+        return res;
+    }
+
 };
 
 
@@ -528,11 +542,12 @@ void dedup_one_dataset(string inpth, size_t n_proc) {
     // cout << "num of samples: " << samples.size() << endl;
 
     cout << "compare each pair" << endl;
-    auto dup_pairs = get_dup_pairs_down_triangle(samples, n_proc);
-    save_result(dup_pairs, inpth + ".pair");
+    auto dup_pairs_ind = get_dup_pairs_down_triangle(samples, n_proc);
+    auto dup_pairs_str = pair_t::inds_to_strings_vector(samples, dup_pairs_ind);
+    save_result(dup_pairs_str, inpth + ".pair");
 
     cout << "search for to-be-removed" << endl;
-    auto to_be_removed = remove_dups_from_pairs(dup_pairs);
+    auto to_be_removed = remove_dups_from_pairs(dup_pairs_ind);
 
     cout << "remove inds and save" << endl;
     auto deduped = vector_remove_by_inds<sample_t>(samples, to_be_removed);
