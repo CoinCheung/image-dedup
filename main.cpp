@@ -26,9 +26,9 @@ template <std::size_t size>
 struct big_int {
     std::array<std::uint8_t, size> bytes;
 
-    static unordered_map<char, uint8_t> hex_to_uint8;
-    static string uint8_to_hex;
-    static vector<uint8_t> count_bits_table;
+    static const unordered_map<char, uint8_t> hex_to_uint8;
+    static const string uint8_to_hex;
+    static const vector<uint8_t> count_bits_table;
 
     big_int() {}
 
@@ -45,8 +45,10 @@ struct big_int {
         }
         size_t pos = 0;
         for (size_t i{0}; i < size; ++i) {
-            bytes[i] = hex_to_uint8[inp[pos++]] << 4;
-            bytes[i] += hex_to_uint8[inp[pos++]];
+            // bytes[i] = hex_to_uint8[inp[pos++]] << 4;
+            // bytes[i] += hex_to_uint8[inp[pos++]];
+            bytes[i] = hex_to_uint8.at(inp[pos++]) << 4;
+            bytes[i] += hex_to_uint8.at(inp[pos++]);
         }
     }
 
@@ -79,45 +81,47 @@ struct big_int {
         }
         return res;
     }
+
+
+    //// functions to initialize member variables
+    static unordered_map<char, uint8_t> init_hex_to_uint8() {
+        unordered_map<char, uint8_t> res;
+        for (size_t i{0}; i < 10; ++i) {
+            char hex = '0' + i;
+            res[hex] = i;
+        }
+        for (size_t i{10}; i < 16; ++i) {
+            char hex = 'a' + i - 10;
+            res[hex] = i;
+        }
+        return res;
+    }
+
+    static vector<uint8_t> init_count_bits_table() {
+        vector<uint8_t> res;
+        for (size_t i = 0; i <= 255; ++i) {
+            uint16_t cnt = 0;
+            uint8_t ii = static_cast<uint8_t>(i);
+            while (ii > 0) {
+                cnt += ii & 0x01;
+                ii = ii >> 1;
+            }
+            res.push_back(cnt);
+        }
+        return res;
+    }
 };
 
-unordered_map<char, uint8_t> init_hex_to_uint8() {
-    unordered_map<char, uint8_t> res;
-    for (size_t i{0}; i < 10; ++i) {
-        char hex = '0' + i;
-        res[hex] = i;
-    }
-    for (size_t i{10}; i < 16; ++i) {
-        char hex = 'a' + i - 10;
-        res[hex] = i;
-    }
-    return res;
-}
-
-
-vector<uint8_t> init_count_bits_table() {
-    vector<uint8_t> res;
-    for (size_t i = 0; i <= 255; ++i) {
-        uint16_t cnt = 0;
-        uint8_t ii = static_cast<uint8_t>(i);
-        while (ii > 0) {
-            cnt += ii & 0x01;
-            ii = ii >> 1;
-        }
-        res.push_back(cnt);
-    }
-    return res;
-}
 
 
 template <std::size_t size>
-string big_int<size>::uint8_to_hex = "0123456789abcdef";
+const string big_int<size>::uint8_to_hex = "0123456789abcdef";
 
 template <std::size_t size>
-unordered_map<char, uint8_t> big_int<size>::hex_to_uint8 = init_hex_to_uint8();
+const unordered_map<char, uint8_t> big_int<size>::hex_to_uint8 = big_int<size>::init_hex_to_uint8();
 
 template <std::size_t size>
-vector<uint8_t> big_int<size>::count_bits_table = init_count_bits_table();
+const vector<uint8_t> big_int<size>::count_bits_table = big_int<size>::init_count_bits_table();
 
 constexpr size_t n_bytes = 16;
 // constexpr size_t n_bytes = 64;
