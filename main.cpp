@@ -6,15 +6,26 @@
 #include <vector>
 #include <utility>
 #include <sstream>
+#include <algorithm>
 #include <array>
+#include <bitset>
 #include <unordered_map>
 #include <unordered_set>
 #include <future>
 #include <cmath>
 
 #include <opencv2/opencv.hpp>
+#include <openssl/evp.h>
 
 using namespace std;
+
+
+// constexpr size_t n_bytes = 16;
+// constexpr size_t n_bytes = 64;
+constexpr size_t n_bytes = 256;
+// uint16_t thr = 10;
+// uint16_t thr = 30;
+uint16_t thr = 200;
 
 
 //////////////////////////////
@@ -40,8 +51,9 @@ struct big_int {
     void from_hex_string(string inp) {
         // TODO: HERE should have length check and char range is 0-f
         if (inp.size() != size * 2) {
-            cout << "hex string should have length of " 
-                << size * 2 << ", but this string has length of " << inp.size() << endl;
+            cerr << "[ERROR] hex string should have length of " 
+                << size * 2 << ", but this string has length of " << inp.size() 
+                << ": " << inp << endl;
         }
         size_t pos = 0;
         for (size_t i{0}; i < size; ++i) {
@@ -74,10 +86,21 @@ struct big_int {
 
     static uint16_t count_diff_bits(const big_int<size>& a, const big_int<size>& b) { 
 
+        // uint16_t res = 0;
+        // for (size_t i = 0; i < size; ++i) {
+        //     uint8_t ind = a.bytes[i] ^ b.bytes[i];
+        //     res += count_bits_table[ind];
+        // }
+        // return res;
+
         uint16_t res = 0;
-        for (size_t i = 0; i < size; ++i) {
-            uint8_t ind = a.bytes[i] ^ b.bytes[i];
-            res += count_bits_table[ind];
+        uint16_t n_chunk = size >> 3;
+        auto *p1 = reinterpret_cast<const uint64_t*>(&a[0]);
+        auto *p2 = reinterpret_cast<const uint64_t*>(&b[0]);
+
+        for (size_t i{0}; i < n_chunk; ++i) {
+            res += bitset<64>{(*p1) ^ (*p2)}.count();
+            ++p1; ++p2;
         }
         return res;
     }
@@ -110,9 +133,31 @@ struct big_int {
         }
         return res;
     }
+
+    uint8_t& operator[] (size_t ind) {
+        return bytes[ind];
+    }
+
+    const uint8_t& operator[] (size_t ind) const {
+        return bytes[ind];
+    }
+
+    bool operator==(const big_int<size>& o) const {
+        // for (size_t i{0}; i < size; ++i) {
+        //     if (o[i] != bytes[i]) return false;
+        // }
+
+        uint16_t n_chunk = size >> 3;
+        const uint64_t *p1 = reinterpret_cast<const uint64_t*>(&o[0]);
+        const uint64_t *p2 = reinterpret_cast<const uint64_t*>(&bytes[0]);
+        for (size_t i{0}; i < n_chunk; ++i) {
+            if ((*p1) != (*p2)) return false;
+            ++p1; ++p2;
+        }
+        return true;
+    }
+
 };
-
-
 
 template <std::size_t size>
 const string big_int<size>::uint8_to_hex = "0123456789abcdef";
@@ -123,168 +168,51 @@ const unordered_map<char, uint8_t> big_int<size>::hex_to_uint8 = big_int<size>::
 template <std::size_t size>
 const vector<uint8_t> big_int<size>::count_bits_table = big_int<size>::init_count_bits_table();
 
-constexpr size_t n_bytes = 16;
-// constexpr size_t n_bytes = 64;
-using bignum_t = big_int<n_bytes>;
-
-ostream& operator<<(ostream& os, bignum_t& bn) {
+template <std::size_t size>
+ostream& operator<<(ostream& os, const big_int<size>& bn) {
     os << bn.to_hex_string();
     return os;
 }
 
+//// functions for supporting map/unordered_map key
+// for map
+template <std::size_t size>
+bool operator<(const big_int<size>& bn1, const big_int<size>& bn2) {
+    for (size_t i{0}; i < size; ++i) {
+        if (bn1[i] == bn2[i]) continue;
+        return bn1[i] < bn2[i];
+    }
+    return false;
+}
+
+// for unordered_map
+namespace std {
+
+template<size_t size>
+struct hash<big_int<size>> {
+    size_t operator()(const big_int<size>& o) const noexcept {
+        return std::hash<string>{}(o.to_hex_string());
+    }
+};
+
+}
+
+template struct big_int<n_bytes>;
+template struct big_int<16>;
+
+using dhash_t = big_int<n_bytes>;
+using md5_t = big_int<16>;
+template<size_t size>
+using sample_t = pair<string, big_int<size>>;
+
 
 ////////////////////////////// big_int
 
-
-
-using sample_t = pair<string, bignum_t>;
-
-ostream& operator<<(ostream& os, sample_t& one) {
-    os << one.first << "," << one.second;
-    return os;
-}
-
-
-uint16_t thr = 10;
-// uint16_t thr = 30;
-
-
-bignum_t compute_dhash(string buf, uint16_t hw) {
-    cv::Mat im = cv::imread(buf, cv::IMREAD_GRAYSCALE);
-    if (im.empty()) cout << "empty image: " << buf << endl;
-
-    cv::Mat resize;
-    cv::resize(im, resize, cv::Size(hw + 1, hw + 1), 0, 0, cv::INTER_AREA);
-
-    uint8_t *data = static_cast<uint8_t*>(resize.data);
-
-    bignum_t hash;
-    size_t byte_ind = 0;
-    uint8_t byte = 0;
-    uint8_t cnt = 0;
-    uint16_t pos = 0;
-    // traverse each row
-    for (size_t h{0}; h < hw; ++h) {
-        uint16_t ind1 = pos;
-        uint16_t ind2 = ind1 + 1;
-
-        for (size_t w{0}; w < hw; ++w) {
-            byte = byte << 1;
-            if (data[ind1] < data[ind2]) byte += 1;
-
-            if (++cnt == 8) {
-                hash.bytes[byte_ind++] = byte;
-                cnt = 0;
-                byte = 0;
-            }
-            ind1 += 1;
-            ind2 += 1;
-        }
-        pos += hw + 1;
-    }
-
-    // traverse each column 
-    byte = 0;
-    cnt = 0;
-    for (size_t w{0}; w < hw; ++w) {
-        uint16_t ind1 = w;
-        uint16_t ind2 = ind1 + hw + 1;
-
-        for (size_t h{0}; h < hw; ++h) {
-            byte = byte << 1;
-            if (data[ind1] < data[ind2]) byte += 1;
-
-            if (++cnt == 8) {
-                hash.bytes[byte_ind++] = byte;
-                cnt = 0;
-                byte = 0;
-            }
-            ind1 += hw + 1;
-            ind2 += hw + 1;
-        }
-    }
-
-    return hash;
-}
-
-
-void gen_dhashes_worker(size_t tid, size_t n_proc,
-        vector<string>& v_paths, vector<sample_t>& res, uint16_t hw) {
-
-    size_t n_samples = v_paths.size();
-    for (size_t i{tid}; i < n_samples; i += n_proc) {
-        auto dhash = compute_dhash(v_paths[i], hw);
-        res[i] = make_pair(v_paths[i], dhash);
-    }
-}
-
-
-// compute dhash
-vector<sample_t> gen_dhashes(string imgpths, size_t n_proc) {
-    ifstream fin(imgpths, ios::in);
-    stringstream ss;
-    fin >> ss.rdbuf();
-    fin.close();
-
-    string buf;
-
-    ss.clear();ss.seekg(0, ios::beg);
-    size_t n_samples = 0;
-    vector<string> v_paths;
-    while (getline(ss, buf)) {
-        v_paths.push_back(buf);
-        ++n_samples;
-    }
-
-
-    uint16_t hw = std::sqrt(n_bytes * 8 / 2);
-    if (hw % 8 != 0) {
-        cout << "[warning]: num of bytes for hash should be divisible by 8" << endl;
-    }
-
-    vector<sample_t> res; res.resize(n_samples);
-    
-    vector<std::future<void>> futures(n_proc);
-    for (size_t tid = 0; tid < n_proc; ++tid) {
-        futures[tid] = std::async(std::launch::async, gen_dhashes_worker, 
-                                  tid, n_proc, std::ref(v_paths), 
-                                  std::ref(res), hw);
-    }
-
-    for (size_t tid = 0; tid < n_proc; ++tid) {
-        futures[tid].wait();
-    }
-
-    return res;
-}
-
-
-// read generated hash
-vector<sample_t> parse_hashes(string inpth) {
-    ifstream fin(inpth, ios::in);
-    stringstream ss;
-    ss << fin.rdbuf();
-    fin.close();
-
-    string buf;
-
-    ss.clear();ss.seekg(0, ios::beg);
-    size_t n_samples = 0;
-    while (getline(ss, buf)) {++n_samples;}
-
-    vector<sample_t> res; res.reserve(n_samples);
-
-    ss.clear();ss.seekg(0, ios::beg);
-    while (getline(ss, buf)) {
-        size_t pos = buf.find(",");
-        string key = buf.substr(0, pos);
-        string v = buf.substr(pos + 1);
-
-        res.push_back(std::make_pair(key, bignum_t(v)));
-    }
-    return res;
-}
-
+//////////////////////////////
+/* 
+ * topology class for comparing pairs
+ */
+//////////////////////////////
 
 // a triangle shape class, used to fetch coordinates from a global index
 struct triangle_t {
@@ -326,7 +254,7 @@ public:
         cout << (*this) << endl;
     }
 
-    friend ostream& operator<<(ostream& os, triangle_t& tr) {
+    friend ostream& operator<<(ostream& os, const triangle_t& tr) {
         os << "(" << tr.i << ", " << tr.j << ")";
         return os;
     }
@@ -343,12 +271,13 @@ struct pair_t {
         cout << (*this) << endl;
     }
 
-    friend ostream& operator<<(ostream& os, pair_t& p) {
+    friend ostream& operator<<(ostream& os, const pair_t& p) {
         os << "i=" << p.i << ", j=" << p.j << ", diff=" << p.diff;
         return os;
     }
 
-    static vector<string> inds_to_strings_vector(const vector<sample_t>& samples, 
+    template<size_t size>
+    static vector<string> inds_to_strings_vector(const vector<sample_t<size>>& samples, 
             const vector<pair_t>& pairs_ind) {
         vector<string> res;
         stringstream ss;
@@ -361,38 +290,321 @@ struct pair_t {
         }
         return res;
     }
-
 };
 
 
-vector<pair_t> down_triangle_worker(size_t tid, size_t n_proc, vector<sample_t>& samples) {
+////////////////////////////// comparing topology
+
+
+
+//////////////////////////////
+/* 
+ * declaritions of all functions
+ */
+//////////////////////////////
+
+template<size_t size>
+ostream& operator<<(ostream& os, const sample_t<size>& one);
+
+string read_bin(string path);
+
+vector<string> read_lines(string inpth);
+
+template<typename T>
+void save_result(vector<T>& res, string savepth);
+
+dhash_t compute_dhash(string buf, uint16_t hw);
+
+void gen_dhashes_worker(size_t tid, size_t n_proc,
+        vector<string>& v_paths, vector<sample_t<n_bytes>>& res, uint16_t hw);
+
+void gen_all_dhash(string inpth, size_t n_proc);
+
+template<size_t size>
+vector<sample_t<size>> parse_hashes(string inpth); 
+
+template<size_t size>
+vector<pair_t> down_triangle_worker(size_t tid, size_t n_proc, 
+        vector<sample_t<size>>& samples);
+
+template<size_t size>
+vector<pair_t> get_dup_pairs_down_triangle(vector<sample_t<size>>& samples, size_t n_proc);
+
+vector<size_t> remove_dups_from_pairs(const vector<pair_t>& dup_pairs); 
+
+template<typename T>
+vector<T> vector_remove_by_inds(vector<T>& samples, vector<size_t>& remove_inds);
+
+template<size_t size>
+vector<string> samples_to_hashes(vector<sample_t<size>>& samples);
+
+template<size_t size>
+vector<size_t> rectangle_worker(size_t tid, size_t n_proc, 
+        vector<sample_t<size>>& samples1, 
+        vector<sample_t<size>>& samples2);
+
+template<size_t size>
+vector<size_t> get_dup_inds_rectangle(vector<sample_t<size>>& samples1, 
+        vector<sample_t<size>>& samples2, size_t n_proc);
+
+void dedup_one_dataset_dhash(string inpth, size_t n_proc);
+
+void merge_datasets_dhash(vector<string> inpths, string savepth, size_t n_proc);
+
+void gen_binhash_worker(size_t tid, size_t n_proc, 
+        vector<string>& paths, vector<string>& res);
+
+void gen_all_binhash(string inpth, size_t n_proc);
+
+md5_t compute_md5(string& s);
+
+void gen_md5_worker(size_t tid, size_t n_proc, 
+        vector<string>& paths, vector<sample_t<16>>& res);
+
+void gen_all_md5(string inpth, size_t n_proc);
+
+template<size_t size>
+vector<sample_t<size>> remove_iden_by_hash(vector<sample_t<size>> samples);
+
+template<size_t size>
+void remove_iden_by_hash(string inpth);
+
+
+//////////////////////////////
+/* 
+ * a wrapper of a method to compute md5
+ */
+//////////////////////////////
+
+
+
+
+template<size_t size>
+ostream& operator<<(ostream& os, const sample_t<size>& one) {
+    os << one.first << "," << one.second;
+    return os;
+}
+
+
+
+string read_bin(string path) {
+    // ifstream fin(path, ios::in);
+    // stringstream ss;
+    // fin >> ss.rdbuf();
+    // fin.close();
+    // return ss.str();
+
+    ifstream fin(path, ios::in|ios::binary);
+    if (!fin.is_open()) {
+        cerr << "[ERROR] open for read fail: " << path 
+            << ", errno: " << errno << endl;
+    }
+
+    fin.seekg(0, fin.end); fin.clear();
+    size_t len = fin.tellg();
+    fin.seekg(0); fin.clear();
+
+    string res; res.resize(len);
+    fin.read(&res[0], len);
+    fin.close();
+    return res;
+}
+
+
+vector<string> read_lines(string inpth) {
+    ifstream fin(inpth, ios::in);
+    if (!fin.is_open()) {
+        cerr << "[ERROR] open for read fail: " << inpth 
+            << ", errno: " << errno << endl;
+    }
+    stringstream ss;
+    fin >> ss.rdbuf();
+    fin.close();
+
+    string buf;
+
+    ss.clear();ss.seekg(0, ios::beg);
+    vector<string> lines;
+    while (getline(ss, buf)) {
+        lines.push_back(buf);
+    }
+    return lines;
+}
+
+
+template<typename T>
+void save_result(vector<T>& res, string savepth) {
+    size_t n_samples = res.size();
+    stringstream ss;
+    for (size_t i{0}; i < n_samples; ++i) {
+        ss << res[i];
+        if (i < n_samples - 1) ss << endl;
+    }
+
+    ss.clear(); ss.seekg(0, ios::beg); 
+    ofstream fout(savepth, ios::out);
+    if (!fout.is_open()) {
+        cerr << "[ERROR] open for write fail: " << savepth 
+            << ", errno: " << errno << endl;
+    }
+    ss >> fout.rdbuf(); fout.close();
+}
+
+
+dhash_t compute_dhash(string buf, uint16_t hw) {
+    cv::Mat im = cv::imread(buf, cv::IMREAD_GRAYSCALE);
+    if (im.empty()) cout << "empty image: " << buf << endl;
+
+    cv::Mat resize;
+    cv::resize(im, resize, cv::Size(hw + 1, hw + 1), 0, 0, cv::INTER_AREA);
+
+    uint8_t *data = static_cast<uint8_t*>(resize.data);
+
+    dhash_t hash;
+    size_t byte_ind = 0;
+    uint8_t byte = 0;
+    uint8_t cnt = 0;
+    uint16_t pos = 0;
+    // traverse each row
+    for (size_t h{0}; h < hw; ++h) {
+        uint16_t ind1 = pos;
+        uint16_t ind2 = ind1 + 1;
+
+        for (size_t w{0}; w < hw; ++w) {
+            byte = byte << 1;
+            if (data[ind1] < data[ind2]) byte += 1;
+
+            if (++cnt == 8) {
+                hash[byte_ind++] = byte;
+                cnt = 0;
+                byte = 0;
+            }
+            ind1 += 1;
+            ind2 += 1;
+        }
+        pos += hw + 1;
+    }
+
+    // traverse each column 
+    byte = 0;
+    cnt = 0;
+    for (size_t w{0}; w < hw; ++w) {
+        uint16_t ind1 = w;
+        uint16_t ind2 = ind1 + hw + 1;
+
+        for (size_t h{0}; h < hw; ++h) {
+            byte = byte << 1;
+            if (data[ind1] < data[ind2]) byte += 1;
+
+            if (++cnt == 8) {
+                hash[byte_ind++] = byte;
+                cnt = 0;
+                byte = 0;
+            }
+            ind1 += hw + 1;
+            ind2 += hw + 1;
+        }
+    }
+
+    return hash;
+}
+
+
+void gen_dhashes_worker(size_t tid, size_t n_proc,
+        vector<string>& v_paths, vector<sample_t<n_bytes>>& res, uint16_t hw) {
+
+    size_t n_samples = v_paths.size();
+    for (size_t i{tid}; i < n_samples; i += n_proc) {
+        // cout << "proc " << tid << ": " << v_paths[i] << endl;
+        auto dhash = compute_dhash(v_paths[i], hw);
+        res[i] = make_pair(v_paths[i], dhash);
+    }
+}
+
+void gen_all_dhash(string inpth, size_t n_proc) {
+    cout << "generate dhash" << endl;
+    vector<string> paths = read_lines(inpth);
+    vector<sample_t<n_bytes>> res; res.resize(paths.size());
+
+    uint16_t hw = std::sqrt(n_bytes * 8 / 2);
+    if (hw % 8 != 0) {
+        cout << "[warning]: num of bytes for dhash should be divisible by 8" << endl;
+    }
+
+    vector<std::future<void>> futures(n_proc);
+    for (size_t tid = 0; tid < n_proc; ++tid) {
+        futures[tid] = std::async(std::launch::async, gen_dhashes_worker, 
+                                  tid, n_proc, std::ref(paths), 
+                                  std::ref(res), hw);
+    }
+
+    for (size_t tid = 0; tid < n_proc; ++tid) {
+        futures[tid].wait();
+    }
+
+    save_result(res, inpth + ".dhash");
+}
+
+
+// read generated hash
+template<size_t size>
+vector<sample_t<size>> parse_hashes(string inpth) {
+
+    auto lines = read_lines(inpth);
+    size_t n_samples = lines.size();
+
+    vector<sample_t<size>> res; res.reserve(n_samples);
+
+    for (string& l : lines) {
+        size_t pos = l.find(",");
+        string key = l.substr(0, pos);
+        string v = l.substr(pos + 1);
+
+        res.push_back(std::make_pair(key, big_int<size>(v)));
+    }
+    return res;
+}
+
+
+
+template<size_t size>
+vector<pair_t> down_triangle_worker(size_t tid, size_t n_proc, vector<sample_t<size>>& samples) {
     size_t n_samples = samples.size();
-    size_t res_size = n_samples * (n_samples - 1) / 2 / n_proc + 1;
+    // size_t res_size = n_samples * (n_samples + 1) / 2 / n_proc + 1;
+    size_t res_size = 20000; // too large will cause bad allocate memory error
     vector<pair_t> res; res.reserve(res_size);
+
+    // cout << "pre-allocated res size of tid " << tid << " is: " << res_size << endl;
+    // cout << "tid " << tid << "res.max_size: " << res.max_size() << endl;
 
     triangle_t coo = triangle_t(tid);
     while (coo.is_in_range(n_samples - 1)) {
         size_t i = coo.get_i() + 1;
         size_t j = coo.get_j();
-        uint16_t diff = bignum_t::count_diff_bits(samples[i].second, samples[j].second);
+        uint16_t diff = big_int<size>::count_diff_bits(samples[i].second, samples[j].second);
 
         if (diff < thr) {
             res.push_back(pair_t(i, j, diff));
+            if (res.size() % 500 == 0) {
+                cout << "result size of tid " << tid << " is : " << res.size() << endl;
+            }
         }
 
         coo.step(n_proc);
     }
 
+    // cout << "tid " << tid << "work done\n";
     return res;
 }
 
 
-vector<pair_t> get_dup_pairs_down_triangle(vector<sample_t>& samples, size_t n_proc) {
+template<size_t size>
+vector<pair_t> get_dup_pairs_down_triangle(vector<sample_t<size>>& samples, size_t n_proc) {
 
     vector<std::future<vector<pair_t>>> futures(n_proc);
     for (size_t tid = 0; tid < n_proc; ++tid) {
         futures[tid] = std::async(std::launch::async,
-                down_triangle_worker, tid, n_proc, std::ref(samples));
+                down_triangle_worker<size>, tid, n_proc, std::ref(samples));
     }
 
     vector<pair_t> res;
@@ -469,7 +681,8 @@ vector<T> vector_remove_by_inds(vector<T>& samples, vector<size_t>& remove_inds)
 }
 
 
-vector<string> vector_remove_dhash(vector<sample_t>& samples) {
+template<size_t size>
+vector<string> samples_to_hashes(vector<sample_t<size>>& samples) {
     size_t num = samples.size();
     vector<string> res; res.reserve(num);
 
@@ -480,30 +693,17 @@ vector<string> vector_remove_dhash(vector<sample_t>& samples) {
 }
 
 
-template<typename T>
-void save_result(vector<T>& res, string savepth) {
-    size_t n_samples = res.size();
-    stringstream ss;
-    for (size_t i{0}; i < n_samples; ++i) {
-        ss << res[i];
-        if (i < n_samples - 1) ss << endl;
-    }
 
-    ss.clear(); ss.seekg(0, ios::beg); 
-    ofstream fout(savepth, ios::out);
-    ss >> fout.rdbuf(); fout.close();
-}
-
-
+template<size_t size>
 vector<size_t> rectangle_worker(size_t tid, size_t n_proc, 
-                                vector<sample_t>& samples1, 
-                                vector<sample_t>& samples2) {
+                                vector<sample_t<size>>& samples1, 
+                                vector<sample_t<size>>& samples2) {
     vector<size_t> res;
     size_t n_loop = samples1.size();
     size_t n_gallery = samples2.size();
     for (size_t i{tid}; i < n_loop; i += n_proc) {
         for (size_t j{0}; j < n_gallery; ++j) {
-            uint16_t diff = bignum_t::count_diff_bits(samples1[i].second, samples2[j].second);
+            uint16_t diff = dhash_t::count_diff_bits(samples1[i].second, samples2[j].second);
             if (diff < thr) {
                 res.push_back(i);
                 break;
@@ -514,12 +714,13 @@ vector<size_t> rectangle_worker(size_t tid, size_t n_proc,
 }
 
 
-vector<size_t> get_dup_inds_rectangle(vector<sample_t>& samples1, 
-                                       vector<sample_t>& samples2, size_t n_proc) {
+template<size_t size>
+vector<size_t> get_dup_inds_rectangle(vector<sample_t<size>>& samples1, 
+                                       vector<sample_t<size>>& samples2, size_t n_proc) {
 
     vector<std::future<vector<size_t>>> futures(n_proc);
     for (size_t tid = 0; tid < n_proc; ++tid) {
-        futures[tid] = std::async(std::launch::async, rectangle_worker, 
+        futures[tid] = std::async(std::launch::async, rectangle_worker<size>, 
                                   tid, n_proc, std::ref(samples1), 
                                   std::ref(samples2));
     }
@@ -534,16 +735,20 @@ vector<size_t> get_dup_inds_rectangle(vector<sample_t>& samples1,
 }
 
 
-/// dedup within one dataset
-void dedup_one_dataset(string inpth, size_t n_proc) {
 
-    cout << "generate dhash" << endl;
-    auto samples = gen_dhashes(inpth, n_proc);
-    save_result(samples, inpth + ".dhash");
 
-    // cout << "read file" << endl;
-    // vector<sample_t> samples = parse_hashes(inpth);
-    // cout << "num of samples: " << samples.size() << endl;
+/// dedup within one dataset using dhash
+void dedup_one_dataset_dhash(string inpth, size_t n_proc) {
+
+    cout << "read file" << endl;
+    auto samples = parse_hashes<n_bytes>(inpth);
+    cout << "num of samples: " << samples.size() << endl;
+
+    cout << "remove samples with indentical dhash code" << endl;
+    size_t before = samples.size();
+    samples = remove_iden_by_hash(samples);
+    size_t after = samples.size();
+    cout << "from " << before << " to " << after << endl;
 
     cout << "compare each pair" << endl;
     auto dup_pairs_ind = get_dup_pairs_down_triangle(samples, n_proc);
@@ -554,34 +759,150 @@ void dedup_one_dataset(string inpth, size_t n_proc) {
     auto to_be_removed = remove_dups_from_pairs(dup_pairs_ind);
 
     cout << "remove inds and save" << endl;
-    auto deduped = vector_remove_by_inds<sample_t>(samples, to_be_removed);
+    auto deduped = vector_remove_by_inds<sample_t<n_bytes>>(samples, to_be_removed);
     save_result(deduped, inpth + ".dedup.dhash");
-    auto res = vector_remove_dhash(deduped);
+    auto res = samples_to_hashes(deduped);
+    cout << "num of remaining samples: " << res.size() << endl;
+
     save_result(res, inpth + ".dedup");
 
 }
 
 
 /// merge multi datasets together, each of which has already been deduplicated
-void merge_datasets(vector<string> inpths, string savepth, size_t n_proc) {
-    // TODO: assert inpths.size() >= 2
+void merge_datasets_dhash(vector<string> inpths, string savepth, size_t n_proc) {
     
-    vector<sample_t> deduped;
+    vector<sample_t<n_bytes>> deduped;
     size_t n = inpths.size();
     for (size_t i{0}; i < n; ++i) {
         cout << "read and merge " << inpths[i] << endl;
-        auto samplesi = parse_hashes(inpths[i] + ".dedup.dhash");
+        auto samplesi = parse_hashes<n_bytes>(inpths[i]);
 
         if (deduped.size() > 0) {
             auto dup_inds_src = get_dup_inds_rectangle(samplesi, deduped, n_proc);
-            samplesi = vector_remove_by_inds<sample_t>(samplesi, dup_inds_src);
+            samplesi = vector_remove_by_inds<sample_t<n_bytes>>(samplesi, dup_inds_src);
         }
         std::copy(samplesi.begin(), samplesi.end(), std::back_inserter(deduped));
     }
 
-    auto res = vector_remove_dhash(deduped);
+    auto res = samples_to_hashes(deduped);
     save_result(res, savepth);
 }
+
+
+/// dedup within one dataset using cpp hash, not necessarily md5, can be other hash methods(not for sure)
+void gen_binhash_worker(size_t tid, size_t n_proc, 
+        vector<string>& paths, vector<string>& res) {
+    size_t n_samples = paths.size();
+    for (size_t i{tid}; i < n_samples; i += n_proc) {
+        string bin = read_bin(paths[i]);
+        size_t hv = std::hash<string>{}(bin);
+        stringstream ss;
+        ss << paths[i] << "," << hv;
+        res[i] = ss.str();
+    }
+}
+
+void gen_all_binhash(string inpth, size_t n_proc) {
+    cout << "gen bin hash with std::hash_t \n";
+    vector<string> paths = read_lines(inpth);
+    vector<string> res; res.resize(paths.size());
+
+    vector<std::future<void>> futures(n_proc);
+    for (size_t tid = 0; tid < n_proc; ++tid) {
+        futures[tid] = std::async(std::launch::async, gen_binhash_worker, 
+                                  tid, n_proc, std::ref(paths), 
+                                  std::ref(res));
+    }
+
+    for (size_t tid = 0; tid < n_proc; ++tid) {
+        futures[tid].wait();
+    }
+
+    save_result(res, inpth + ".binhash");
+}
+
+
+md5_t compute_md5(string& s) {
+
+    const EVP_MD *md = EVP_md5();
+    unsigned int md_len = EVP_MD_size(md); // 16
+
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();;
+    EVP_DigestInit_ex(mdctx, md, nullptr);
+
+    EVP_DigestUpdate(mdctx, &s[0], s.size());
+
+    big_int<16> md_value;
+    EVP_DigestFinal_ex(mdctx, &md_value[0], &md_len);
+    EVP_MD_CTX_free(mdctx);
+    return md_value;
+}
+
+
+void gen_md5_worker(size_t tid, size_t n_proc, 
+        vector<string>& paths, vector<sample_t<16>>& res) {
+    size_t n_samples = paths.size();
+    for (size_t i{tid}; i < n_samples; i += n_proc) {
+        string bin = read_bin(paths[i]);
+        md5_t one = compute_md5(bin);
+        res[i] = make_pair(paths[i], one);
+    }
+}
+
+
+void gen_all_md5(string inpth, size_t n_proc) {
+    cout << "gen all md5 \n";
+    vector<string> paths = read_lines(inpth);
+    vector<sample_t<16>> res; res.resize(paths.size());
+
+    vector<std::future<void>> futures(n_proc);
+    for (size_t tid = 0; tid < n_proc; ++tid) {
+        futures[tid] = std::async(std::launch::async, gen_md5_worker, 
+                                  tid, n_proc, std::ref(paths), 
+                                  std::ref(res));
+    }
+
+    for (size_t tid = 0; tid < n_proc; ++tid) {
+        futures[tid].wait();
+    }
+
+    save_result(res, inpth + ".md5");
+}
+
+
+template<size_t size>
+vector<sample_t<size>> remove_iden_by_hash(vector<sample_t<size>> samples) {
+    unordered_map<big_int<size>, string> hash;
+    for (auto& one : samples) {
+        string path = one.first;
+        big_int<size> code = one.second;
+        hash[code] = path;
+    }
+    vector<sample_t<size>> res; res.reserve(hash.size());
+    for (auto& one : hash) {
+        big_int<size> code = one.first;
+        string path = one.second;
+        res.push_back(std::make_pair(path, code));
+    }
+    return res;
+}
+
+
+template<size_t size>
+void remove_iden_by_hash(string inpth) {
+
+    cout << "remove indentical by hash code \n";
+    auto samples = parse_hashes<size>(inpth);
+    cout << "num samples before dedup: " << samples.size() << endl;
+
+    samples = remove_iden_by_hash(samples);
+    auto res = samples_to_hashes(samples);
+
+    cout << "num samples after dedup: " << res.size() << endl;
+    save_result(res, inpth + ".dedup");
+}
+
 
 
 /* 
@@ -589,8 +910,8 @@ void merge_datasets(vector<string> inpths, string savepth, size_t n_proc) {
  *     === compile command:  
  *     === 
  *
- *         $ apt install libopencv-dev
- *         $ g++ -O2 main.cpp -std=c++14 -o main -lpthread $(pkg-config --libs --cflags opencv)
+ *         $ apt install libopencv-dev libssl-dev
+ *         $ g++ -O2 main.cpp -std=c++14 -o main -lpthread -lcrypto $(pkg-config --libs --cflags opencv4)
  *
  *     === 
  *     === void dedup_one_dataset(string inpth);
@@ -654,22 +975,45 @@ void merge_datasets(vector<string> inpths, string savepth, size_t n_proc) {
 int main(int argc, char* argv[]) {
 
     string cmd(argv[1]);
-    size_t n_proc = static_cast<size_t>(std::stoi(string(argv[2])));
+    auto get_n_proc = [](const char* s) {
+        size_t n_proc = static_cast<size_t>(std::stoi(string(s)));
+        return n_proc;
+    };
 
-    if (cmd == "one_dataset") {
+    if (cmd == "gen_dhash") {
 
+        size_t n_proc = get_n_proc(argv[2]);
         string inpth(argv[3]);
-        dedup_one_dataset(inpth, n_proc);
+        gen_all_dhash(inpth, n_proc);
 
-    } else if (cmd == "merge") {
+    } else if (cmd == "dedup_dhash") {
 
+        size_t n_proc = get_n_proc(argv[2]);
+        string inpth(argv[3]);
+        dedup_one_dataset_dhash(inpth, n_proc);
+
+    } else if (cmd == "merge_dhash") {
+
+        size_t n_proc = get_n_proc(argv[2]);
         vector<string> inpths;
         for (int i{3}; i < argc - 1; ++i) {
             inpths.push_back(argv[i]);
         }
         string savepth(argv[argc - 1]);
-        merge_datasets(inpths, savepth, n_proc);
+        merge_datasets_dhash(inpths, savepth, n_proc);
+
+    } else if (cmd == "gen_md5") {
+
+        size_t n_proc = get_n_proc(argv[2]);
+        string inpth(argv[3]);
+        gen_all_md5(inpth, n_proc);
+
+    } else if (cmd == "dedup_md5") {
+
+        string inpth(argv[3]);
+        remove_iden_by_hash<16>(inpth);
     }
+
 
     return 0;
 }
