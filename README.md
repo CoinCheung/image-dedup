@@ -21,6 +21,33 @@ Only one source file:
 
 ## Usage  
 
+### filter by quality
+
+Here we can filter out some images that is considered to be not so qualified. The rules are:<br>
+* postfix is jpg/jpeg, but file neither starts with `0xff0xd8`, nor ends with `0xff0xd9`.
+* postfix is png, but file neither starts with `89 50 4e 47 0d 0a 1a 0a`, nor ends with `49 45 4e 44 ae 42 60 82`.
+* file size is less than 50k.
+* shorter side of the image is less than 64.
+* longer side of the image is greater than 2048.
+* image channel number is not 3.
+* ratio of longer side and shorter side is greater than 4.
+<br>
+Though these rules does not always point to low-quality images, I just find it is helpful for me picking out images from huge amount of images.<br>
+
+If one needs to carry out the filtering as above mentioned, one should prepare a file `annos/images.txt` that contains paths to images in such format:
+```
+    /path/to/image1
+    /path/to/image2
+    /path/to/image3
+    ...
+```
+and then run the command:
+```
+    $ export n_proc=64 # how many cpu cores to use 
+    $ ./run_dedup filter $n_proc annos/images.txt
+```
+This would generate a `annos/images.txt.filt` with same format as the `annos/images.txt`.
+
 
 ### dedup by md5
 #### Step 1. generate all md5
@@ -31,9 +58,9 @@ Firstly, prepare a file contains paths to images in such format:
     /path/to/image3
     ...
 ```
-Store this file as `annos/images.txt`.
+Suppose we store this file as `annos/images.txt`.
 <br /><br />
-Then run the command:  
+Then we run the command:  
 ```
     ## NOTE: do not change the order of the args
     $ export n_proc=64 # how many cpu cores to use 

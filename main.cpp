@@ -320,6 +320,8 @@ void gen_dhashes_worker(size_t tid, size_t n_proc,
 
 void gen_all_dhash(string inpth, size_t n_proc);
 
+void filter_out_images(string inpth, size_t n_proc);
+
 template<size_t size>
 vector<sample_t<size>> parse_hashes(string inpth); 
 
@@ -386,6 +388,13 @@ ostream& operator<<(ostream& os, const sample_t<size>& one) {
 }
 
 
+void print_string_as_hex(string& str) {
+    cout << std::hex;
+    for (char c : str) {
+        cout << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(c));
+    }
+}
+
 
 string read_bin(string path) {
     // ifstream fin(path, ios::in);
@@ -430,6 +439,112 @@ vector<string> read_lines(string inpth) {
     }
     return lines;
 }
+
+vector<string> filter_img_worker(size_t tid, size_t n_proc, vector<string>& v_paths) {
+
+    /// rules
+    // jpg/jpeg: starts with ff d8, ends with ff d9
+    // png: starts with 89 50 4e 47 0d 0a 1a 0a, and ends with 49 45 4e 44 ae 42 60 82
+    // file size less than 50k
+    // shorter side less than 64
+    // longer side greater than 2048
+    // ratio of longer and shorter greater than 4
+    // image channel number is not 3
+
+    const string HEAD_JPG{'\xff', '\xd8'};
+    const string TAIL_JPG{'\xff', '\xd9'};
+    const string HEAD_PNG({'\x90', '\x50', '\x4e', '\x47', '\x0d', '\x0a', '\x1a', '\x0a'});
+    const string TAIL_PNG({'\x49', '\x45', '\x4e', '\x44', '\xae', '\x42', '\x60', '\x82'});
+    const string POSTF_JPG1("jpg");
+    const string POSTF_JPG2("jpeg");
+    const string POSTF_PNG("png");
+
+    auto lam_check_func = [&](const string pth)->bool {
+        // postfix
+        string postf = pth.substr(pth.rfind(".")+1);
+        std::transform(postf.begin(), postf.end(), postf.begin(), [](char ch){
+                return static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                });
+
+        // file size
+        std::ifstream fin(pth, std::ifstream::in);
+        fin.seekg(0, fin.end);
+        size_t size = fin.tellg();
+        if (size < 50000) return false;
+
+        // head bytes and tail bytes
+        fin.clear(); fin.seekg(0); fin.clear();
+        string head, tail;
+        size_t nbytes = 0;
+        if (postf == POSTF_JPG1 or postf == POSTF_JPG2) {
+            nbytes = 2;
+        } else if (postf == POSTF_PNG) {
+            nbytes = 8;
+        }
+        head.resize(nbytes); tail.resize(nbytes);
+        fin.read(&head[0], nbytes);
+        fin.seekg(size - nbytes);
+        fin.read(&tail[0], nbytes);
+
+        if (postf == POSTF_JPG1 or postf == POSTF_JPG2) {
+            if (head != HEAD_JPG or tail != TAIL_JPG) return false;
+        } else if (postf == POSTF_PNG) {
+            if (head != HEAD_PNG or tail != TAIL_PNG) return false;
+        }
+
+        // image w/h/c/ratio
+        cv::Mat im = cv::imread(pth);
+        int64_t H = im.rows;
+        int64_t W = im.cols;
+        int64_t C = im.channels();
+        float ratio = static_cast<float>(H) / static_cast<float>(W);
+        if (W > H) {
+            ratio = static_cast<float>(W) / static_cast<float>(H);
+        }
+
+        if (std::min(W, H) < 64) return false;
+        if (std::max(W, H) > 2048) return false;
+        if (C != 3) return false;
+        if (ratio > 4.F) return false;
+
+        fin.close();
+
+        return true;
+    };
+
+    size_t n_samples = v_paths.size();
+    vector<string> res; res.reserve(static_cast<size_t>(n_samples / n_proc + 1));
+    for (size_t i{tid}; i < n_samples; i += n_proc) {
+        bool valid = lam_check_func(v_paths[i]);
+        if (valid) {
+            res.push_back(v_paths[i]);
+        }
+    }
+    return res;
+}
+
+
+/// filter out images by some rule
+void filter_out_images(string inpth, size_t n_proc) {
+    cout << "filter out images by rules" << endl;
+    vector<string> paths = read_lines(inpth);
+    vector<string> res; res.reserve(paths.size());
+
+    vector<std::future<vector<string>>> futures(n_proc);
+    for (size_t tid = 0; tid < n_proc; ++tid) {
+        futures[tid] = std::async(std::launch::async, filter_img_worker, 
+                                  tid, n_proc, std::ref(paths));
+    }
+
+    for (size_t tid = 0; tid < n_proc; ++tid) {
+    
+        auto r = futures[tid].get();
+        std::copy(r.begin(), r.end(), std::back_inserter(res));
+    }
+
+    save_result(res, inpth + ".filt");
+}
+
 
 
 template<typename T>
@@ -521,6 +636,8 @@ void gen_dhashes_worker(size_t tid, size_t n_proc,
     }
 }
 
+
+/// generate dhashes given paths of images
 void gen_all_dhash(string inpth, size_t n_proc) {
     cout << "generate dhash" << endl;
     vector<string> paths = read_lines(inpth);
@@ -790,6 +907,24 @@ void merge_datasets_dhash(vector<string> inpths, string savepth, size_t n_proc) 
 }
 
 
+/// drop those paths in src_path which duplicates with some path in dst_path
+void remain_datasets_dhash(string src_path, string dst_path, size_t n_proc) {
+
+    cout << "obtain remaining images in: [" << src_path 
+         << "], after dropping those duplicates with images in: [" << dst_path << "]" << endl;
+    vector<sample_t<n_bytes>> remains;
+    auto src_samples = parse_hashes<n_bytes>(src_path);
+    auto dst_samples = parse_hashes<n_bytes>(dst_path);
+    auto dup_inds_src = get_dup_inds_rectangle(src_samples, dst_samples, n_proc);
+    src_samples = vector_remove_by_inds<sample_t<n_bytes>>(src_samples, dup_inds_src);
+
+    auto res = samples_to_hashes(src_samples);
+    string savepth = src_path + ".rem";
+    save_result(res, savepth);
+}
+
+
+
 /// dedup within one dataset using cpp hash, not necessarily md5, can be other hash methods(not for sure)
 void gen_binhash_worker(size_t tid, size_t n_proc, 
         vector<string>& paths, vector<string>& res) {
@@ -980,7 +1115,12 @@ int main(int argc, char* argv[]) {
         return n_proc;
     };
 
-    if (cmd == "gen_dhash") {
+    if (cmd == "filter") {
+        size_t n_proc = get_n_proc(argv[2]);
+        string inpth(argv[3]);
+        filter_out_images(inpth, n_proc);
+
+    } else if (cmd == "gen_dhash") {
 
         size_t n_proc = get_n_proc(argv[2]);
         string inpth(argv[3]);
@@ -1001,6 +1141,13 @@ int main(int argc, char* argv[]) {
         }
         string savepth(argv[argc - 1]);
         merge_datasets_dhash(inpths, savepth, n_proc);
+
+    } else if (cmd == "remain_dhash") {
+
+        size_t n_proc = get_n_proc(argv[2]);
+        string src_path = argv[3];
+        string dst_path = argv[4];
+        remain_datasets_dhash(src_path, dst_path, n_proc);
 
     } else if (cmd == "gen_md5") {
 
