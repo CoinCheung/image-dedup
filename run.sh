@@ -6,9 +6,11 @@
 
 rm ./run_dedup
 
+SRC="main.cpp image_deduper.cpp topology.cpp hash_func.cpp helper.cpp"
+
 export PKG_CONFIG_PATH=/opt/opencv/lib/pkgconfig:$PKG_CONFIG_PATH
 export LD_LIBRARY_PATH=/opt/opencv/lib:$LD_LIBRARY_PATH
-g++ -O2 main.cpp -std=c++14 -o run_dedup -lpthread -lcrypto $(pkg-config --libs --cflags opencv4)
+g++ -O2 $SRC -std=c++17 -o run_dedup -lpthread -lcrypto $(pkg-config --libs --cflags opencv4)
 
 echo "compile done"
 
@@ -36,20 +38,25 @@ cp ./run_dedup ${root_dir}/
     # rm ${prefix}.filt.md5.dedup.dhash.dedup.dhash
 # popd
 
-prefix=./in21k.txt
+
+prefix=./tmp/in1k.txt
 pushd ${root_dir}/
+
     rm ${prefix}.filt
+    time ./run_dedup filter $n_proc ${prefix}
+
     rm ${prefix}.filt.md5
+    time ./run_dedup gen_md5 $n_proc ${prefix}.filt
+
     rm ${prefix}.filt.md5.dedup
+    time ./run_dedup dedup_md5 $n_proc ${prefix}.filt.md5
+
     rm ${prefix}.filt.md5.dedup.dhash
+    time ./run_dedup gen_dhash $n_proc ${prefix}.filt.md5.dedup
+
     rm ${prefix}.filt.md5.dedup.dhash.pair
     rm ${prefix}.filt.md5.dedup.dhash.dedup
     rm ${prefix}.filt.md5.dedup.dhash.dedup.dhash
-
-    time ./run_dedup filter $n_proc ${prefix}
-    time ./run_dedup gen_md5 $n_proc ${prefix}.filt
-    time ./run_dedup dedup_md5 $n_proc ${prefix}.filt.md5
-    time ./run_dedup gen_dhash $n_proc ${prefix}.filt.md5.dedup
     time ./run_dedup dedup_dhash $n_proc ${prefix}.filt.md5.dedup.dhash
 popd
 

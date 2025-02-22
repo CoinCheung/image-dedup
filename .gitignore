@@ -34,3 +34,6 @@
 
 annos/*
 run_dedup
+
+useless.cpp
+useless
