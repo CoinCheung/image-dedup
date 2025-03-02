@@ -69,3 +69,17 @@ ostream& operator<<(ostream& os, const pair_t& p) {
     return os;
 }
 
+
+vector<string> pair_t::inds_to_strings_vector(const vector<string>& keys, 
+        const vector<pair_t>& pairs_ind) {
+    vector<string> res;
+    stringstream ss;
+    for (auto &pair : pairs_ind) {
+        ss.str(""); ss.clear();
+        ss << keys[pair.i] << ","
+            << keys[pair.j]
+            << "," << pair.diff; 
+        res.emplace_back(ss.str());
+    }
+    return res;
+}

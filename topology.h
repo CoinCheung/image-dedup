@@ -6,7 +6,6 @@
 #include <string>
 #include <iostream>
 
-#include "samples.hpp"
 
 using namespace std;
 
@@ -42,20 +41,7 @@ struct pair_t {
 
     friend ostream& operator<<(ostream& os, const pair_t& p);
 
-    template<typename hash_t>
-    static vector<string> inds_to_strings_vector(const sample_set<hash_t>& samples, 
-            const vector<pair_t>& pairs_ind) {
-        vector<string> res;
-        stringstream ss;
-        for (auto &pair : pairs_ind) {
-            ss.str(""); ss.clear();
-            ss << samples[pair.i].key << ","
-                << samples[pair.j].key 
-                << "," << pair.diff; 
-            res.emplace_back(ss.str());
-        }
-        return res;
-    }
+    static vector<string> inds_to_strings_vector(const vector<string>& keys, const vector<pair_t>& pairs_ind);
 
 };
 

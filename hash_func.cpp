@@ -6,8 +6,31 @@
 #include <opencv2/opencv.hpp>
 #include <openssl/evp.h>
 
-#include "helper.h"
-#include "samples.hpp"
+#include "hash_func.h"
+
+
+vector<char> read_bin(const string& path) {
+    // ifstream fin(path, ios::in);
+    // stringstream ss;
+    // fin >> ss.rdbuf();
+    // fin.close();
+    // return ss.str();
+
+    ifstream fin(path, ios::in|ios::binary);
+    if (!fin.is_open()) {
+        cerr << "[ERROR] open for read fail: " << path 
+            << ", errno: " << errno << endl;
+    }
+
+    fin.seekg(0, fin.end); fin.clear();
+    size_t len = fin.tellg();
+    fin.seekg(0); fin.clear();
+
+    vector<char> res; res.resize(len);
+    fin.read(&res[0], len);
+    fin.close();
+    return res;
+}
 
 
 md5_t compute_md5(const vector<char>& s) {
