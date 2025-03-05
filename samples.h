@@ -34,6 +34,7 @@ public:
     void cleanup_dhash(const bool keep_memory);
     void gen_all_dhashes();
     void dedup_by_dhash();
+    void dedup_by_dhash(const string&);
     void merge_other_dhash(const sample_set&);
     void drop_exists_by_dhash(const sample_set&);
     void save_samples_dhash(const string&) const;

@@ -1,61 +1,16 @@
 
 #include <iostream>
-#include <iomanip>
 #include <string>
 #include <vector>
-#include <sstream>
-#include <unordered_map>
 #include <chrono>
 
 #include "samples.h"
 #include "image_deduper.h"
 #include "image_filter.h"
+#include "utils.h"
 
 
 using namespace std;
-
-
-struct Timer{
-public:
-    Timer(const string& name) {
-        starts[name] = chrono::high_resolution_clock::now();
-    }
-
-    Timer(): Timer("default") {}
-
-    void start(const string& name) {
-        starts[name] = chrono::high_resolution_clock::now();
-    }
-
-    string time_duration(const string& name) {
-        using namespace std::chrono;
-
-        auto dura = chrono::high_resolution_clock::now() - starts[name];
-
-        auto hour = duration_cast<hours>(dura);
-        dura -= hour;
-
-        auto minu = duration_cast<minutes>(dura);
-        dura -= minu;
-
-        auto sec = duration_cast<seconds>(dura);
-        dura -= sec;
-
-        stringstream ss;
-        ss << std::setfill('0') 
-           << std::setw(2) << hour.count() << ":" 
-           << std::setw(2) << minu.count() << ":" 
-           << std::setw(2) << sec.count();
-        return ss.str();
-    }
-    
-    string time_duration() {
-        return time_duration("default");
-    }
-
-private:
-    unordered_map<string, chrono::high_resolution_clock::time_point> starts;
-};
 
 
 
@@ -76,41 +31,36 @@ void ImageDeduper::parse_args(int argc, char* argv[]) {
     };
 
     if (cmd == "filter") {
-        n_proc = get_n_proc(argv[2]);
         src_paths.push_back(argv[3]);
 
     } else if (cmd == "gen_md5") {
-        n_proc = get_n_proc(argv[2]);
         src_paths.push_back(argv[3]);
 
     } else if (cmd == "dedup_md5") {
-        n_proc = get_n_proc(argv[2]);
         src_paths.push_back(argv[3]);
 
     } else if (cmd == "gen_dhash") {
-        n_proc = get_n_proc(argv[2]);
         src_paths.push_back(argv[3]);
 
     } else if (cmd == "dedup_dhash") {
-        n_proc = get_n_proc(argv[2]);
         src_paths.push_back(argv[3]);
 
     } else if (cmd == "merge_dhash") {
-        n_proc = get_n_proc(argv[2]);
         for (int i{3}; i < argc - 1; ++i) {
             src_paths.push_back(argv[i]);
         }
         dst_paths.push_back(argv[argc - 1]);
 
     } else if (cmd == "remain_dhash") {
-        n_proc = get_n_proc(argv[2]);
         src_paths.push_back(argv[3]);
         dst_paths.push_back(argv[4]);
 
     } else if (cmd == "pipeline") {
-        n_proc = get_n_proc(argv[2]);
         src_paths.push_back(argv[3]);
     }
+
+    size_t n_proc = get_n_proc(argv[2]);
+    samples.set_n_proc(n_proc);
 }
 
 
@@ -140,10 +90,8 @@ void ImageDeduper::filter_out_images() {
     cout << "filter out images by rules" << endl;
 
     string inpth = src_paths[0];
-    sample_set samples;
 
     auto timer = Timer();
-    samples.set_n_proc(n_proc);
     samples.load_keys(inpth);
     samples.filter_by_keys(img_keep_func);
     samples.save_keys(inpth + ".filt");
@@ -153,13 +101,11 @@ void ImageDeduper::filter_out_images() {
 
 void ImageDeduper::gen_all_dhash() {
     /// generate dhashes given paths of images
-    cout << "generate dhash" << endl;
+    cout << "generate all dhash" << endl;
 
     string inpth = src_paths[0];
-    sample_set samples;
 
     auto timer = Timer();
-    samples.set_n_proc(n_proc);
     samples.load_keys(inpth);
     samples.gen_all_dhashes();
     samples.save_samples_dhash(inpth + ".dhash");
@@ -172,12 +118,10 @@ void ImageDeduper::dedup_one_dataset_dhash() {
     cout << "dedup by dhash" << endl;
 
     string inpth = src_paths[0];
-    sample_set samples;
 
     auto timer = Timer();
-    samples.set_n_proc(n_proc);
     samples.load_samples_dhash(inpth); // TODO: here if samples is not empty, need to check whether inpth missing keys
-    samples.dedup_by_dhash();
+    samples.dedup_by_dhash(inpth);
     samples.save_samples_dhash(inpth + ".dedup.dhash");
     samples.save_keys(inpth + ".dedup");
     cout << "\t- time used: " << timer.time_duration() << endl;
@@ -190,17 +134,15 @@ void ImageDeduper::merge_datasets_dhash() {
 
     vector<string> inpths = src_paths;
     string savepth = dst_paths[0];
-    sample_set deduped;
-    deduped.set_n_proc(n_proc);
 
     auto timer = Timer();
     size_t n = inpths.size();
     for (size_t i{0}; i < n; ++i) {
         sample_set samplesi;
         samplesi.load_samples_dhash(inpths[i]);
-        deduped.merge_other_dhash(samplesi);
+        samples.merge_other_dhash(samplesi);
     }
-    deduped.save_keys(savepth);
+    samples.save_keys(savepth);
     cout << "\t- time used: " << timer.time_duration() << endl;
 }
 
@@ -215,14 +157,12 @@ void ImageDeduper::remain_datasets_dhash() {
     cout << "obtain remaining images in: [" << src_path 
          << "], after dropping those duplicates with images in: [" << dst_path << "]" << endl;
 
-    sample_set src_samples;
+    samples.load_samples_dhash(src_path);
     sample_set dst_samples;
-    src_samples.set_n_proc(n_proc);
-    src_samples.load_samples_dhash(src_path);
     dst_samples.load_samples_dhash(dst_path);
 
-    src_samples.drop_exists_by_dhash(dst_samples);
-    src_samples.save_keys(src_path + ".rem");
+    samples.drop_exists_by_dhash(dst_samples);
+    samples.save_keys(src_path + ".rem");
     cout << "\t- time used: " << timer.time_duration() << endl;
 }
 
@@ -232,10 +172,8 @@ void ImageDeduper::gen_all_md5() {
     cout << "gen all md5" << endl;
 
     string inpth = src_paths[0];
-    sample_set samples;
 
     auto timer = Timer();
-    samples.set_n_proc(n_proc);
     samples.load_keys(inpth);
     samples.gen_all_md5s();
     samples.save_samples_md5(inpth + ".md5");
@@ -247,10 +185,8 @@ void ImageDeduper::dedup_one_dataset_md5() {
     cout << "remove indentical by md5 code" << endl;
 
     string inpth = src_paths[0];
-    sample_set samples;
 
     auto timer = Timer();
-    samples.set_n_proc(n_proc);
     samples.load_samples_md5(inpth);
     samples.dedup_by_md5();
     samples.save_keys(inpth + ".dedup");
@@ -289,20 +225,50 @@ void ImageDeduper::dedup_one_dataset_md5() {
 void ImageDeduper::process_pipeline() {
 
     auto timer = Timer();
-    filter_out_images();
+    timer.start("global");
 
-    src_paths[0] = src_paths[0] + ".filt";
-    gen_all_md5();
+    string inpth = src_paths[0];
 
-    src_paths[0] = src_paths[0] + ".md5";
-    dedup_one_dataset_md5();
+    // filter out low quality
+    cout << "filter out images by rules" << endl;
+    timer.start("step");
+    string filt_savepth = inpth + ".filt";
+    samples.load_keys(inpth);
+    samples.filter_by_keys(img_keep_func);
+    samples.save_keys(filt_savepth);
+    cout << "\t- time used: " << timer.time_duration("step") << endl;
 
-    src_paths[0] = src_paths[0] + ".dedup";
-    gen_all_dhash();
+    // dedup by md5s
+    cout << "gen all md5" << endl;
+    timer.start("step");
+    string md5_savepth = filt_savepth + ".md5";
+    samples.gen_all_md5s();
+    samples.save_samples_md5(md5_savepth);
+    cout << "\t- time used: " << timer.time_duration("step") << endl;
 
-    src_paths[0] = src_paths[0] + ".dhash";
-    dedup_one_dataset_dhash();
+    cout << "remove indentical by md5 code" << endl;
+    timer.start("step");
+    string md5_dedup_savepth = md5_savepth + ".dedup";
+    samples.dedup_by_md5();
+    samples.save_keys(md5_dedup_savepth);
+    cout << "\t- time used: " << timer.time_duration("step") << endl;
 
-    cout << "\ttime of whole pipeline: " << timer.time_duration() << endl;
+    // dedup by dhash
+    cout << "generate all dhash" << endl;
+    timer.start("step");
+    string dhash_savepth = md5_dedup_savepth + ".dhash";
+    samples.gen_all_dhashes();
+    samples.save_samples_dhash(dhash_savepth);
+    cout << "\t- time used: " << timer.time_duration("step") << endl;
+
+    cout << "dedup by dhash" << endl;
+    timer.start("step");
+    string dhash_dedup_savepth = dhash_savepth + ".dedup";
+    samples.dedup_by_dhash(dhash_savepth);
+    samples.save_keys(dhash_dedup_savepth);
+    samples.save_samples_dhash(dhash_dedup_savepth + ".dhash");
+    cout << "\t- time used: " << timer.time_duration("step") << endl;
+
+    cout << "time of whole pipeline: " << timer.time_duration("global") << endl;
 }
 

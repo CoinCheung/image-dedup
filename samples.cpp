@@ -10,6 +10,7 @@
 #include "samples.h"
 #include "hash_func.h"
 #include "topology.h"
+#include "utils.h"
 
 // std::ios_base::sync_with_stdio(false);
 using namespace std;
@@ -27,7 +28,6 @@ uint16_t thr = 200;
 //////////////////////////////
 namespace {
 
-void CHECK(bool e, const string& msg);
 
 
 template<typename T>
@@ -56,8 +56,8 @@ template<typename hash_t>
 void dedup_by_identical_hash(vector<string>&, vector<hash_t>&);
 
 template<typename hash_t>
-void dedup_by_hash_bits_diff(vector<string>& keys, 
-        vector<hash_t>& v_dhash, size_t n_proc, const string& name);
+vector<size_t> dedup_by_hash_bits_diff(vector<string>& keys, 
+        vector<hash_t>& v_hash, size_t n_proc, const string& name);
 
 template<typename... Ts>
 void remove_by_given_inds(const vector<size_t>& inds, vector<Ts>&... vecs);
@@ -218,9 +218,17 @@ void sample_set::gen_all_dhashes() {
 
 
 void sample_set::dedup_by_dhash() {
+    this->dedup_by_dhash("");
+}
 
-    dedup_by_identical_hash<dhash_t>(keys, v_dhash);
-    dedup_by_hash_bits_diff<dhash_t>(keys, v_dhash, n_proc, "dhash");
+
+void sample_set::dedup_by_dhash(const string& savename) {
+    dedup_by_identical_hash(keys, v_dhash);
+    auto dup_inds = dedup_by_hash_bits_diff(keys, v_dhash, n_proc, savename);
+
+    cout << "\t- remove inds and save" << endl;
+    this->remove_by_inds(dup_inds);
+    cout << "\t- num of remaining samples: " << keys.size() << endl;
 }
 
 
@@ -292,12 +300,6 @@ void sample_set::save_samples_md5(const string& savepth) const {
 
 namespace {
 
-void CHECK(bool e, const string& msg) {
-    if (!e) {
-        cerr << msg << endl;
-        std::terminate();
-    }
-}
 
 template<typename T>
 void cleanup_vector(vector<T>& vec, const bool keep_memory) {
@@ -312,18 +314,13 @@ void cleanup_vector(vector<T>& vec, const bool keep_memory) {
 template<typename hash_t>
 void load_keys_values(const string& inpth, vector<string>& keys, vector<hash_t>& v_hash) {
     cout << "\t- load from: " << inpth << endl;
-    CHECK (keys.size() == 0 and v_hash.size() == 0, "keys or v_hash is not empty !!\n");
+    CHECK (keys.size() == 0 and v_hash.size() == 0) << "keys or v_hash is not empty !!" << endl;
 
     ifstream fin(inpth, ios::in);
-    if (!fin.is_open()) {
-        cerr << "[ERROR] open for read fail: " << inpth 
-            << ", errno: " << errno << endl;
-        std::terminate();
-    }
+    CHECK(fin.is_open())  << "[ERROR] open for read fail: " << inpth << ", errno: " << errno << endl;
 
-    stringstream ss;
-    fin >> ss.rdbuf();
-    fin.close();
+    stringstream ss; 
+    fin >> ss.rdbuf(); fin.close();
 
     string buf;
 
@@ -342,10 +339,7 @@ template<typename... Ts>
 void save_samples(const string& savepth, const vector<string>& keys, 
         const vector<Ts>&... values) {
 
-    if (((keys.size() != values.size()) || ...)) {
-        cerr << "size of keys and values should be same !!\n";
-        std::terminate();
-    }
+    CHECK (!((keys.size() != values.size()) || ...)) << "size of keys and values should be same !!" << endl;
 
     stringstream ss;
     size_t n_samples = keys.size();
@@ -360,11 +354,7 @@ void save_samples(const string& savepth, const vector<string>& keys,
     cout << "\t- save to " << savepth << endl;;
     ss.clear(); ss.seekg(0, ios::beg); 
     ofstream fout(savepth, ios::out);
-    if (!fout.is_open()) {
-        cerr << "[ERROR] open for write fail: " << savepth 
-            << ", errno: " << errno << endl;
-        std::terminate();
-    }
+    CHECK (fout.is_open())  << "[ERROR] open for write fail: " << savepth << ", errno: " << errno << endl;
     ss >> fout.rdbuf(); fout.close();
 }
 
@@ -395,6 +385,7 @@ void gen_samples_worker(size_t tid, size_t n_proc,
     }
 }
 
+
 template<typename hash_t>
 void gen_all_samples(size_t n_proc, vector<string>& paths, 
         vector<hash_t>& res, std::function<hash_t(const string&)> hash_func) {
@@ -415,9 +406,10 @@ void gen_all_samples(size_t n_proc, vector<string>& paths,
     }
 }
 
+
 template<typename hash_t>
 void dedup_by_identical_hash(vector<string>& keys, vector<hash_t>& samples) {
-    CHECK(keys.size() == samples.size(), "size of keys and samples should be same !!");
+    CHECK(keys.size() == samples.size()) << "size of keys and samples should be same !!" << endl;
 
     size_t n_samples = keys.size();
     unordered_set<hash_t> hash;
@@ -432,21 +424,23 @@ void dedup_by_identical_hash(vector<string>& keys, vector<hash_t>& samples) {
 }
 
 
+// TODO: here return inds, then see if we can remove inds for all hashes
 template<typename hash_t>
-void dedup_by_hash_bits_diff(vector<string>& keys, 
-        vector<hash_t>& v_dhash, size_t n_proc, const string& name) {
+vector<size_t> dedup_by_hash_bits_diff(vector<string>& keys, 
+        vector<hash_t>& v_hash, size_t n_proc, const string& name) {
 
     cout << "\t- compare each pair" << endl;
-    auto dup_pairs_ind = get_dup_pairs_down_triangle(v_dhash, n_proc);
-    auto dup_pairs_str = pair_t::inds_to_strings_vector(keys, dup_pairs_ind);
-    save_samples(name + ".pair", dup_pairs_str);
+    auto dup_pairs_ind = get_dup_pairs_down_triangle(v_hash, n_proc);
+
+    if (name != "") {
+        auto dup_pairs_str = pair_t::inds_to_strings_vector(keys, dup_pairs_ind);
+        save_samples(name + ".pair", dup_pairs_str);
+    }
 
     cout << "\t- search for to-be-removed" << endl;
     auto to_be_removed = remove_dups_from_pairs(dup_pairs_ind);
+    return to_be_removed;
 
-    cout << "\t- remove inds and save" << endl;
-    remove_by_given_inds(to_be_removed, keys, v_dhash);
-    cout << "\t- num of remaining samples: " << keys.size() << endl;
 }
 
 
@@ -552,7 +546,7 @@ vector<pair_t> down_triangle_worker(const size_t tid, const size_t n_proc, const
         if (diff < thr) {
             res.push_back(pair_t(i, j, diff));
             if (res.size() % 500 == 0) {
-                cout << "result size of tid " << tid << " is : " << res.size() << endl;
+                cout << "\t- result size of tid " << tid << " is : " << res.size() << endl;
             }
         }
 

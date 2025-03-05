@@ -6,6 +6,8 @@
 #include <vector>
 #include <functional>
 
+#include "samples.h"
+
 
 using namespace std;
 
@@ -13,10 +15,6 @@ using namespace std;
 
 struct ImageDeduper {
 public:
-    string cmd;
-    size_t n_proc;
-    vector<string> src_paths;
-    vector<string> dst_paths;
 
     ImageDeduper(); 
 
@@ -38,6 +36,13 @@ public:
     // void dedup_one_dataset_binhash();
 
     void process_pipeline();
+
+private:
+    string cmd;
+    vector<string> src_paths;
+    vector<string> dst_paths;
+
+    sample_set samples;
 };
 
 
