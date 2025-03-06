@@ -43,6 +43,8 @@ private:
     vector<string> dst_paths;
 
     sample_set samples;
+
+    unordered_map<string, function<void(void)>> funcs;
 };
 
 

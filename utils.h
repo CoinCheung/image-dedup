@@ -8,6 +8,7 @@
 #include <chrono>
 #include <sstream>
 #include <unordered_map>
+#include <functional>
 
 
 using namespace std;
@@ -15,6 +16,7 @@ using namespace std;
 
 struct Timer {
 public:
+
     Timer(const string& name);
     Timer();
 
@@ -23,31 +25,56 @@ public:
     string time_duration(const string& name);
     string time_duration();
 
+    template<typename F, typename... Args> 
+    static auto run_func(F&& f, Args&&... args) -> decltype(f(args...)) {
+        auto timer = Timer();
+
+        using T = decltype(f(args...));
+        if constexpr (is_same_v<T, void>) {
+            std::invoke(f, std::forward(args)...); 
+            cout << "\t- time used: " << timer.time_duration() << endl;
+        } else {
+            T res = std::invoke(f, std::forward(args)...);
+            cout << "\t- time used: " << timer.time_duration() << endl;
+            return res;
+        }
+    }
+
 private:
     unordered_map<string, chrono::high_resolution_clock::time_point> starts;
 };
 
 
-struct CHECK {
+struct check {
 public:
-    explicit CHECK(bool success);
+    explicit check(bool success): success{ success } {}
 
-    ~CHECK();
+    ~check() {
+        if (!success) {
+            cerr << s.str();
+            std::terminate();
+        }
+    }
 
-    CHECK(const CHECK&) = delete;
-    CHECK(CHECK&&) = delete;
-    CHECK& operator=(const CHECK&) = delete;
-    CHECK& operator=(CHECK&&) = delete;
+    check(const check&) = delete;
+    check(check&&) = default;
+    check& operator=(const check&) = delete;
+    check& operator=(check&&) = delete;
 
     template <typename T>
-    CHECK&& operator<<(const T& value) && {
+    check&& operator<<(const T& value) && {
         if (!success) {
             s << value;
         }
         return std::move(*this);
     }
 
-    CHECK&& operator<<(std::ostream& (*)(std::ostream&)) &&; // support endl/hex/setw
+    check&& operator<<(std::ostream& (*manip)(std::ostream&)) && { // support endl/hex/setw
+        if (!success) {
+            manip(s);
+        }
+        return std::move(*this);
+    }
 
 
 private:
@@ -55,8 +82,7 @@ private:
     std::stringstream s{};
 };
 
-
-
+#define CHECK(predicate) (predicate) ? check{ true } : check{ false }
 
 // #ifdef DEBUG
 // #define CHECK(predicate) check{ (predicate) }

@@ -56,23 +56,3 @@ string Timer::time_duration() {
 }
 
 
-//////////////////////////////
-/* 
- * For CHECK class
- */
-//////////////////////////////
-
-CHECK::CHECK(bool success) : success{ success } {}
-
-CHECK::~CHECK() {
-    if (!success) {
-        cerr << s.str();
-        std::terminate();
-    }
-} 
-
-CHECK&& CHECK::operator<<(std::ostream& (*manipulator)(std::ostream&)) && {
-    manipulator(s); 
-    return std::move(*this);        
-}
-

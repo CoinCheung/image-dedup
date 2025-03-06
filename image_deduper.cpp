@@ -32,31 +32,39 @@ void ImageDeduper::parse_args(int argc, char* argv[]) {
 
     if (cmd == "filter") {
         src_paths.push_back(argv[3]);
+        funcs[cmd] = std::bind(&ImageDeduper::filter_out_images, this);
 
     } else if (cmd == "gen_md5") {
         src_paths.push_back(argv[3]);
+        funcs[cmd] = std::bind(&ImageDeduper::gen_all_md5, this);
 
     } else if (cmd == "dedup_md5") {
         src_paths.push_back(argv[3]);
+        funcs[cmd] = std::bind(&ImageDeduper::dedup_one_dataset_md5, this);
 
     } else if (cmd == "gen_dhash") {
         src_paths.push_back(argv[3]);
+        funcs[cmd] = std::bind(&ImageDeduper::gen_all_dhash, this);
 
     } else if (cmd == "dedup_dhash") {
         src_paths.push_back(argv[3]);
+        funcs[cmd] = std::bind(&ImageDeduper::dedup_one_dataset_dhash, this);
 
     } else if (cmd == "merge_dhash") {
         for (int i{3}; i < argc - 1; ++i) {
             src_paths.push_back(argv[i]);
         }
         dst_paths.push_back(argv[argc - 1]);
+        funcs[cmd] = std::bind(&ImageDeduper::merge_datasets_dhash, this);
 
     } else if (cmd == "remain_dhash") {
         src_paths.push_back(argv[3]);
         dst_paths.push_back(argv[4]);
+        funcs[cmd] = std::bind(&ImageDeduper::remain_datasets_dhash, this);
 
     } else if (cmd == "pipeline") {
         src_paths.push_back(argv[3]);
+        funcs[cmd] = std::bind(&ImageDeduper::process_pipeline, this);
     }
 
     size_t n_proc = get_n_proc(argv[2]);
@@ -65,22 +73,11 @@ void ImageDeduper::parse_args(int argc, char* argv[]) {
 
 
 void ImageDeduper::run_cmd() {
-    if (cmd == "filter") {
-        filter_out_images();
-    } else if (cmd == "gen_md5") {
-        gen_all_md5();
-    } else if (cmd == "dedup_md5") {
-        dedup_one_dataset_md5();
-    } else if (cmd == "gen_dhash") {
-        gen_all_dhash();
-    } else if (cmd == "dedup_dhash") {
-        dedup_one_dataset_dhash();
-    } else if (cmd == "merge_dhash") {
-        merge_datasets_dhash();
-    } else if (cmd == "remain_dhash") {
-        remain_datasets_dhash();
-    } else if (cmd == "pipeline") {
+     
+    if (cmd == "pipeline") {
         process_pipeline();
+    } else {
+        Timer::run_func(funcs[cmd]);
     }
 }
 
@@ -91,11 +88,9 @@ void ImageDeduper::filter_out_images() {
 
     string inpth = src_paths[0];
 
-    auto timer = Timer();
     samples.load_keys(inpth);
     samples.filter_by_keys(img_keep_func);
     samples.save_keys(inpth + ".filt");
-    cout << "\t- time used: " << timer.time_duration() << endl;
 }
 
 
@@ -105,11 +100,9 @@ void ImageDeduper::gen_all_dhash() {
 
     string inpth = src_paths[0];
 
-    auto timer = Timer();
     samples.load_keys(inpth);
     samples.gen_all_dhashes();
     samples.save_samples_dhash(inpth + ".dhash");
-    cout << "\t- time used: " << timer.time_duration() << endl;
 }
 
 
@@ -119,12 +112,10 @@ void ImageDeduper::dedup_one_dataset_dhash() {
 
     string inpth = src_paths[0];
 
-    auto timer = Timer();
     samples.load_samples_dhash(inpth); // TODO: here if samples is not empty, need to check whether inpth missing keys
     samples.dedup_by_dhash(inpth);
     samples.save_samples_dhash(inpth + ".dedup.dhash");
     samples.save_keys(inpth + ".dedup");
-    cout << "\t- time used: " << timer.time_duration() << endl;
 }
 
 
@@ -135,7 +126,6 @@ void ImageDeduper::merge_datasets_dhash() {
     vector<string> inpths = src_paths;
     string savepth = dst_paths[0];
 
-    auto timer = Timer();
     size_t n = inpths.size();
     for (size_t i{0}; i < n; ++i) {
         sample_set samplesi;
@@ -143,14 +133,12 @@ void ImageDeduper::merge_datasets_dhash() {
         samples.merge_other_dhash(samplesi);
     }
     samples.save_keys(savepth);
-    cout << "\t- time used: " << timer.time_duration() << endl;
 }
 
 
 void ImageDeduper::remain_datasets_dhash() {
     /// drop those paths in src_path which duplicates with some path in dst_path
     
-    auto timer = Timer();
     string src_path = src_paths[0];
     string dst_path = dst_paths[0];
 
@@ -163,7 +151,6 @@ void ImageDeduper::remain_datasets_dhash() {
 
     samples.drop_exists_by_dhash(dst_samples);
     samples.save_keys(src_path + ".rem");
-    cout << "\t- time used: " << timer.time_duration() << endl;
 }
 
 
@@ -173,11 +160,9 @@ void ImageDeduper::gen_all_md5() {
 
     string inpth = src_paths[0];
 
-    auto timer = Timer();
     samples.load_keys(inpth);
     samples.gen_all_md5s();
     samples.save_samples_md5(inpth + ".md5");
-    cout << "\t- time used: " << timer.time_duration() << endl;
 }
 
 
@@ -186,11 +171,9 @@ void ImageDeduper::dedup_one_dataset_md5() {
 
     string inpth = src_paths[0];
 
-    auto timer = Timer();
     samples.load_samples_md5(inpth);
     samples.dedup_by_md5();
     samples.save_keys(inpth + ".dedup");
-    cout << "\t- time used: " << timer.time_duration() << endl;
 }
 
 
