@@ -17,32 +17,32 @@ using namespace std;
 
 // a triangle shape class, used to fetch coordinates from a global index
 
-int triangle_t::get_i() {return i;}
-int triangle_t::get_j() {return j;}
+int triangle_t::get_i() {return m_i;}
+int triangle_t::get_j() {return m_j;}
 
 triangle_t::triangle_t(int pos) {
     int sum = 0;
-    i = 0;
+    m_i = 0;
     while (true) {
-        if (sum + i >= pos) break;
-        sum += i + 1;
-        ++i;
+        if (sum + m_i >= pos) break;
+        sum += m_i + 1;
+        ++m_i;
     }
-    j = pos - sum;
+    m_j = pos - sum;
 }
 
 void triangle_t::step(int n) { // move a step of n and update its coordinate
-    while (j + n >= i + 1) {
-        ++i;
-        n -= i - j;
-        j = 0;
+    while (m_j + n >= m_i + 1) {
+        ++m_i;
+        n -= m_i - m_j;
+        m_j = 0;
     }
-    j += n;
+    m_j += n;
 }
 
 bool triangle_t::is_in_range(int n_levels) { // see if the current position is with a triagle with height n_levels
-    if (i < 0 or j < 0) return false;
-    if (i >= n_levels or j >= n_levels) return false;
+    if (m_i < 0 or m_j < 0) return false;
+    if (m_i >= n_levels or m_j >= n_levels) return false;
     return true;
 }
 
@@ -51,21 +51,21 @@ void triangle_t::print() {
 }
 
 ostream& operator<<(ostream& os, const triangle_t& tr) {
-    os << "(" << tr.i << ", " << tr.j << ")";
+    os << "(" << tr.m_i << ", " << tr.m_j << ")";
     return os;
 }
 
 
 // a class of pair for coordinates
 
-pair_t::pair_t(size_t i, size_t j, uint16_t diff): i(i), j(j), diff(diff) {}
+pair_t::pair_t(size_t i, size_t j, uint16_t diff): m_i(i), m_j(j), m_diff(diff) {}
 
 void pair_t::print() {
     cout << (*this) << endl;
 }
 
 ostream& operator<<(ostream& os, const pair_t& p) {
-    os << "i=" << p.i << ", j=" << p.j << ", diff=" << p.diff;
+    os << "i=" << p.m_i << ", j=" << p.m_j << ", diff=" << p.m_diff;
     return os;
 }
 
@@ -76,9 +76,9 @@ vector<string> pair_t::inds_to_strings_vector(const vector<string>& keys,
     stringstream ss;
     for (auto &pair : pairs_ind) {
         ss.str(""); ss.clear();
-        ss << keys[pair.i] << ","
-            << keys[pair.j]
-            << "," << pair.diff; 
+        ss << keys[pair.m_i] << ","
+            << keys[pair.m_j]
+            << "," << pair.m_diff; 
         res.emplace_back(ss.str());
     }
     return res;

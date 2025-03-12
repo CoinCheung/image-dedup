@@ -267,7 +267,8 @@ void sample_set::cleanup_md5(const bool keep_memory) {
 void sample_set::gen_all_md5s() {
     using func_t = std::function<md5_t(const string&)>; 
     using func_ptr = md5_t(*)(const string&);
-    func_t md5_func = static_cast<func_ptr>(&compute_md5);
+    // func_t md5_func = static_cast<func_ptr>(&compute_md5);
+    func_t md5_func = [](const string& s) {return compute_md5(s);};
     gen_all_samples<md5_t>(n_proc, keys, v_md5, md5_func);
 }
 
@@ -465,14 +466,14 @@ void remove_by_given_inds(const vector<size_t>& inds, vector<Ts>&... vecs) {
 vector<size_t> remove_dups_from_pairs(const vector<pair_t>& dup_pairs) {
     unordered_map<size_t, unordered_set<size_t>> adj_table;
     for (auto& el : dup_pairs) {
-        if (adj_table.find(el.i) == adj_table.end()) {
-            adj_table[el.i] = unordered_set<size_t>();
+        if (adj_table.find(el.m_i) == adj_table.end()) {
+            adj_table[el.m_i] = unordered_set<size_t>();
         }
-        if (adj_table.find(el.j) == adj_table.end()) {
-            adj_table[el.j] = unordered_set<size_t>();
+        if (adj_table.find(el.m_j) == adj_table.end()) {
+            adj_table[el.m_j] = unordered_set<size_t>();
         }
-        adj_table[el.i].insert(el.j);
-        adj_table[el.j].insert(el.i);
+        adj_table[el.m_i].insert(el.m_j);
+        adj_table[el.m_j].insert(el.m_i);
     }
 
     size_t n_pairs = dup_pairs.size();

@@ -41,17 +41,17 @@ public:
     }
 
 private:
-    unordered_map<string, chrono::high_resolution_clock::time_point> starts;
+    unordered_map<string, chrono::high_resolution_clock::time_point> m_starts;
 };
 
 
 struct check {
 public:
-    explicit check(bool success): success{ success } {}
+    explicit check(bool success): m_success{ success } {}
 
     ~check() {
-        if (!success) {
-            cerr << s.str();
+        if (!m_success) {
+            cerr << m_ss.str();
             std::terminate();
         }
     }
@@ -63,23 +63,23 @@ public:
 
     template <typename T>
     check&& operator<<(const T& value) && {
-        if (!success) {
-            s << value;
+        if (!m_success) {
+            m_ss << value;
         }
         return std::move(*this);
     }
 
     check&& operator<<(std::ostream& (*manip)(std::ostream&)) && { // support endl/hex/setw
-        if (!success) {
-            manip(s);
+        if (!m_success) {
+            manip(m_ss);
         }
         return std::move(*this);
     }
 
 
 private:
-    bool success{};
-    std::stringstream s{};
+    bool m_success{};
+    std::stringstream m_ss{};
 };
 
 #define CHECK(predicate) (predicate) ? check{ true } : check{ false }

@@ -12,8 +12,8 @@ using namespace std;
 
 struct triangle_t {
 private:
-    int i{-1};
-    int j{-1};
+    int m_i{-1};
+    int m_j{-1};
 
 public:
     int get_i();
@@ -32,9 +32,10 @@ public:
 
 
 struct pair_t {
-    size_t i;
-    size_t j;
-    uint16_t diff;
+    size_t m_i;
+    size_t m_j;
+    uint16_t m_diff;
+
     pair_t(size_t i, size_t j, uint16_t diff);
     
     void print(); 

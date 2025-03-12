@@ -38,13 +38,13 @@ public:
     void process_pipeline();
 
 private:
-    string cmd;
-    vector<string> src_paths;
-    vector<string> dst_paths;
+    string m_cmd;
+    vector<string> m_src_paths;
+    vector<string> m_dst_paths;
 
-    sample_set samples;
+    sample_set m_samples;
 
-    unordered_map<string, function<void(void)>> funcs;
+    unordered_map<string, function<void(void)>> m_funcs;
 };
 
 

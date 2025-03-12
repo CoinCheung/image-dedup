@@ -56,8 +56,6 @@ private:
     // vector<binhash_t> v_binhash;
 
     size_t n_proc;
-
-
 };
 
 #endif

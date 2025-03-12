@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <bitset>
+#include <bit>
 #include <string>
 
 
@@ -25,7 +26,7 @@ using namespace std;
 
 template <std::size_t size>
 struct big_int {
-    std::array<std::uint8_t, size> bytes;
+    std::array<std::uint8_t, size> m_bytes;
 
     static const unordered_map<char, uint8_t> hex_to_uint8;
     static const string uint8_to_hex;
@@ -33,7 +34,7 @@ struct big_int {
 
     big_int() {}
 
-    big_int(const big_int<size>& b): bytes(b.bytes) {}
+    big_int(const big_int<size>& b): m_bytes(b.m_bytes) {}
 
     big_int(string s) {
         from_hex_string(s);
@@ -49,10 +50,10 @@ struct big_int {
         }
         size_t pos = 0;
         for (size_t i{0}; i < size; ++i) {
-            // bytes[i] = hex_to_uint8[inp[pos++]] << 4;
-            // bytes[i] += hex_to_uint8[inp[pos++]];
-            bytes[i] = hex_to_uint8.at(inp[pos++]) << 4;
-            bytes[i] += hex_to_uint8.at(inp[pos++]);
+            // m_bytes[i] = hex_to_uint8[inp[pos++]] << 4;
+            // m_bytes[i] += hex_to_uint8[inp[pos++]];
+            m_bytes[i] = hex_to_uint8.at(inp[pos++]) << 4;
+            m_bytes[i] += hex_to_uint8.at(inp[pos++]);
         }
     }
 
@@ -62,8 +63,8 @@ struct big_int {
 
         size_t pos = 0;
         for (size_t i{0}; i < size; ++i) {
-            res[pos++] = uint8_to_hex[(bytes[i] & 0xf0) >> 4];
-            res[pos++] = uint8_to_hex[bytes[i] & 0x0f];
+            res[pos++] = uint8_to_hex[(m_bytes[i] & 0xf0) >> 4];
+            res[pos++] = uint8_to_hex[m_bytes[i] & 0x0f];
         }
         return res;
     }
@@ -71,19 +72,27 @@ struct big_int {
     void left_move_add_byte(uint8_t byte) {
         size_t n = size - 1;
         for (size_t i{0}; i < n; ++i) {
-            bytes[i] = bytes[i+1];
+            m_bytes[i] = m_bytes[i+1];
         }
-        bytes[n] = byte;
+        m_bytes[n] = byte;
     }
 
     static uint16_t count_diff_bits(const big_int<size>& a, const big_int<size>& b) { 
+        return count_diff_bits_v3(a, b);
+    }
 
-        // uint16_t res = 0;
-        // for (size_t i = 0; i < size; ++i) {
-        //     uint8_t ind = a.bytes[i] ^ b.bytes[i];
-        //     res += count_bits_table[ind];
-        // }
-        // return res;
+    static uint16_t count_diff_bits_v1(const big_int<size>& a, const big_int<size>& b) { 
+
+        uint16_t res = 0;
+        for (size_t i = 0; i < size; ++i) {
+            uint8_t ind = a.m_bytes[i] ^ b.m_bytes[i];
+            res += count_bits_table[ind];
+        }
+        return res;
+    }
+
+    static uint16_t count_diff_bits_v2(const big_int<size>& a, const big_int<size>& b) { 
+
 
         uint16_t res = 0;
         uint16_t n_chunk = size >> 3;
@@ -91,10 +100,66 @@ struct big_int {
         auto *p2 = reinterpret_cast<const uint64_t*>(&b[0]);
 
         for (size_t i{0}; i < n_chunk; ++i) {
-            res += bitset<64>{(*p1) ^ (*p2)}.count();
+            res += bitset<sizeof(uint64_t)>{(*p1) ^ (*p2)}.count();
             ++p1; ++p2;
         }
         return res;
+    }
+
+    static uint16_t count_diff_bits_v3(const big_int<size>& a, const big_int<size>& b) { 
+
+        uint16_t res = 0;
+        size_t n_rem = size;
+        auto *p1 = reinterpret_cast<const uint64_t*>(&a[0]);
+        auto *p2 = reinterpret_cast<const uint64_t*>(&b[0]);
+
+        while (n_rem > sizeof(uint64_t)) {
+            res += std::popcount((*p1) ^ (*p2));
+            ++p1; ++p2;
+            n_rem -= sizeof(uint64_t);
+        }
+
+        // for remainings
+        if (n_rem > sizeof(uint32_t)) {
+            auto *pp1 = reinterpret_cast<const uint32_t*>(p1);
+            auto *pp2 = reinterpret_cast<const uint32_t*>(p2);
+            res += std::popcount((*pp1) ^ (*pp2));
+            n_rem -= sizeof(uint32_t);
+        }
+
+        while (n_rem > 0) {
+            size_t i = size - n_rem;
+            uint8_t ind = a.m_bytes[i] ^ b.m_bytes[i];
+            res += count_bits_table[ind];
+            --n_rem;
+        }
+        return res;
+
+        // uint16_t res = 0;
+        // size_t n_chunk = size / sizeof(uint64_t);
+        // size_t n_rem = size % sizeof(uint64_t);
+        // auto *p1 = reinterpret_cast<const uint64_t*>(&a[0]);
+        // auto *p2 = reinterpret_cast<const uint64_t*>(&b[0]);
+
+        // for (size_t i = 0; i < n_chunk; ++i) {
+        //     res += std::popcount((*p1) ^ (*p2));
+        //     ++p1; ++p2;
+        // }
+        // // for remainings
+        // if (n_rem > sizeof(uint32_t)) {
+        //     auto *pp1 = reinterpret_cast<const uint32_t*>(p1);
+        //     auto *pp2 = reinterpret_cast<const uint32_t*>(p2);
+        //     res += std::popcount((*pp1) ^ (*pp2));
+        //     n_rem -= sizeof(uint32_t);
+        // }
+
+        // while (n_rem > 0) {
+        //     size_t i = size - n_rem;
+        //     uint8_t ind = a.m_bytes[i] ^ b.m_bytes[i];
+        //     res += count_bits_table[ind];
+        //     --n_rem;
+        // }
+        // return res;
     }
 
 
@@ -127,21 +192,21 @@ struct big_int {
     }
 
     uint8_t& operator[] (size_t ind) {
-        return bytes[ind];
+        return m_bytes[ind];
     }
 
     const uint8_t& operator[] (size_t ind) const {
-        return bytes[ind];
+        return m_bytes[ind];
     }
 
     bool operator==(const big_int<size>& o) const {
         // for (size_t i{0}; i < size; ++i) {
-        //     if (o[i] != bytes[i]) return false;
+        //     if (o[i] != m_bytes[i]) return false;
         // }
 
         uint16_t n_chunk = size >> 3;
         const uint64_t *p1 = reinterpret_cast<const uint64_t*>(&o[0]);
-        const uint64_t *p2 = reinterpret_cast<const uint64_t*>(&bytes[0]);
+        const uint64_t *p2 = reinterpret_cast<const uint64_t*>(&m_bytes[0]);
         for (size_t i{0}; i < n_chunk; ++i) {
             if ((*p1) != (*p2)) return false;
             ++p1; ++p2;

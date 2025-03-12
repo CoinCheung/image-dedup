@@ -24,14 +24,14 @@ Timer::Timer(): Timer("default") {}
 
 
 void Timer::start(const string& name) {
-    starts[name] = chrono::high_resolution_clock::now();
+    m_starts[name] = chrono::high_resolution_clock::now();
 }
 
 
 string Timer::time_duration(const string& name) {
     using namespace std::chrono;
 
-    auto dura = chrono::high_resolution_clock::now() - starts[name];
+    auto dura = chrono::high_resolution_clock::now() - m_starts[name];
 
     auto hour = duration_cast<hours>(dura);
     dura -= hour;

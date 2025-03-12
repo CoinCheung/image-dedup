@@ -9,7 +9,7 @@
 using namespace std;
 
 
-constexpr size_t n_bytes = 256;
+constexpr size_t n_bytes = 256; // resize image to 32x32
 using dhash_t = big_int<n_bytes>;
 using md5_t = big_int<16>;
 using binhash_t = big_int<sizeof(size_t)>;

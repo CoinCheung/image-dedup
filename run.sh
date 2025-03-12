@@ -10,7 +10,8 @@ SRC="main.cpp image_deduper.cpp topology.cpp hash_func.cpp samples.cpp image_fil
 
 export PKG_CONFIG_PATH=/opt/opencv/lib/pkgconfig:$PKG_CONFIG_PATH
 export LD_LIBRARY_PATH=/opt/opencv/lib:$LD_LIBRARY_PATH
-g++ -O2 $SRC -std=c++17 -o run_dedup -lpthread -lcrypto $(pkg-config --libs --cflags opencv4)
+g++ -O2 $SRC -std=c++20 -o run_dedup -lpthread -lcrypto $(pkg-config --libs --cflags opencv4)
+
 
 echo "compile done"
 
