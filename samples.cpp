@@ -1,6 +1,8 @@
 
 #include <iostream>
 #include <string>
+#include <set>
+#include <unordered_set>
 #include <vector>
 #include <iterator>
 #include <future>
@@ -413,13 +415,14 @@ void dedup_by_identical_hash(vector<string>& keys, vector<hash_t>& samples) {
     CHECK(keys.size() == samples.size()) << "size of keys and samples should be same !!" << endl;
 
     size_t n_samples = keys.size();
-    unordered_set<hash_t> hash;
+    // unordered_set<hash_t> hashset; // hash may collapse, so we use set
+    set<hash_t> hashset;
     vector<size_t> inds; inds.reserve(static_cast<size_t>(n_samples * 0.2));
     for (size_t i{0}; i < n_samples; ++i) {
-        if (hash.find(samples[i]) != hash.end()) {
+        if (hashset.find(samples[i]) != hashset.end()) {
             inds.push_back(i);
         }
-        hash.insert(samples[i]);
+        hashset.insert(samples[i]);
     }
     remove_by_given_inds(inds, keys, samples);
 }

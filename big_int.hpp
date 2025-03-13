@@ -13,6 +13,7 @@
 #include <bitset>
 #include <bit>
 #include <string>
+#include <cstring>
 
 
 //////////////////////////////
@@ -92,74 +93,49 @@ struct big_int {
     }
 
     static uint16_t count_diff_bits_v2(const big_int<size>& a, const big_int<size>& b) { 
-
-
         uint16_t res = 0;
-        uint16_t n_chunk = size >> 3;
-        auto *p1 = reinterpret_cast<const uint64_t*>(&a[0]);
-        auto *p2 = reinterpret_cast<const uint64_t*>(&b[0]);
-
-        for (size_t i{0}; i < n_chunk; ++i) {
-            res += bitset<sizeof(uint64_t)>{(*p1) ^ (*p2)}.count();
-            ++p1; ++p2;
+        size_t n_rem = size;
+        while (n_rem > sizeof(uint64_t)) {
+            size_t pos = size - n_rem;
+            uint64_t v_a, v_b;
+            std::memcpy(&v_a, &a[pos], sizeof(uint64_t));
+            std::memcpy(&v_b, &b[pos], sizeof(uint64_t));
+            res += bitset<sizeof(uint64_t)>{v_a ^ v_b}.count();
+            n_rem -= sizeof(uint64_t);
         }
         return res;
     }
 
     static uint16_t count_diff_bits_v3(const big_int<size>& a, const big_int<size>& b) { 
+        // we do not use reinterpret_cast because it is undefined behavior, and is not recommended
+        // std::memcpy is best here, compile will not really copy memory at all. No performance overhead
 
         uint16_t res = 0;
         size_t n_rem = size;
-        auto *p1 = reinterpret_cast<const uint64_t*>(&a[0]);
-        auto *p2 = reinterpret_cast<const uint64_t*>(&b[0]);
-
         while (n_rem > sizeof(uint64_t)) {
-            res += std::popcount((*p1) ^ (*p2));
-            ++p1; ++p2;
+            size_t pos = size - n_rem;
+            uint64_t v_a, v_b;
+            std::memcpy(&v_a, &a[pos], sizeof(uint64_t));
+            std::memcpy(&v_b, &b[pos], sizeof(uint64_t));
+            res += std::popcount(v_a ^ v_b);
             n_rem -= sizeof(uint64_t);
         }
-
         // for remainings
         if (n_rem > sizeof(uint32_t)) {
-            auto *pp1 = reinterpret_cast<const uint32_t*>(p1);
-            auto *pp2 = reinterpret_cast<const uint32_t*>(p2);
-            res += std::popcount((*pp1) ^ (*pp2));
+            size_t pos = size - n_rem;
+            uint32_t v_a, v_b;
+            std::memcpy(&v_a, &a[pos], sizeof(uint32_t));
+            std::memcpy(&v_b, &b[pos], sizeof(uint32_t));
+            res += std::popcount(v_a ^ v_b);
             n_rem -= sizeof(uint32_t);
         }
-
         while (n_rem > 0) {
-            size_t i = size - n_rem;
-            uint8_t ind = a.m_bytes[i] ^ b.m_bytes[i];
+            size_t pos = size - n_rem;
+            uint8_t ind = a.m_bytes[pos] ^ b.m_bytes[pos];
             res += count_bits_table[ind];
             --n_rem;
         }
         return res;
-
-        // uint16_t res = 0;
-        // size_t n_chunk = size / sizeof(uint64_t);
-        // size_t n_rem = size % sizeof(uint64_t);
-        // auto *p1 = reinterpret_cast<const uint64_t*>(&a[0]);
-        // auto *p2 = reinterpret_cast<const uint64_t*>(&b[0]);
-
-        // for (size_t i = 0; i < n_chunk; ++i) {
-        //     res += std::popcount((*p1) ^ (*p2));
-        //     ++p1; ++p2;
-        // }
-        // // for remainings
-        // if (n_rem > sizeof(uint32_t)) {
-        //     auto *pp1 = reinterpret_cast<const uint32_t*>(p1);
-        //     auto *pp2 = reinterpret_cast<const uint32_t*>(p2);
-        //     res += std::popcount((*pp1) ^ (*pp2));
-        //     n_rem -= sizeof(uint32_t);
-        // }
-
-        // while (n_rem > 0) {
-        //     size_t i = size - n_rem;
-        //     uint8_t ind = a.m_bytes[i] ^ b.m_bytes[i];
-        //     res += count_bits_table[ind];
-        //     --n_rem;
-        // }
-        // return res;
     }
 
 
@@ -204,14 +180,40 @@ struct big_int {
         //     if (o[i] != m_bytes[i]) return false;
         // }
 
-        uint16_t n_chunk = size >> 3;
-        const uint64_t *p1 = reinterpret_cast<const uint64_t*>(&o[0]);
-        const uint64_t *p2 = reinterpret_cast<const uint64_t*>(&m_bytes[0]);
-        for (size_t i{0}; i < n_chunk; ++i) {
-            if ((*p1) != (*p2)) return false;
-            ++p1; ++p2;
+        size_t n_rem = size;
+        while (n_rem > sizeof(uint64_t)) {
+            size_t pos = size - n_rem;
+            uint64_t v_a, v_b;
+            std::memcpy(&v_a, &o[pos], sizeof(uint64_t));
+            std::memcpy(&v_b, &m_bytes[pos], sizeof(uint64_t));
+            if (v_a != v_b) return false;
+            n_rem -= sizeof(uint64_t);
+        }
+        // for remainings
+        if (n_rem > sizeof(uint32_t)) {
+            size_t pos = size - n_rem;
+            uint32_t v_a, v_b;
+            std::memcpy(&v_a, &o[pos], sizeof(uint32_t));
+            std::memcpy(&v_b, &m_bytes[pos], sizeof(uint32_t));
+            if (v_a != v_b) return false;
+            n_rem -= sizeof(uint32_t);
+        }
+        while (n_rem > 0) {
+            size_t pos = size - n_rem;
+            if (o.m_bytes[pos] != m_bytes[pos]) return false;
+            --n_rem;
         }
         return true;
+
+
+        // uint16_t n_chunk = size >> 3;
+        // const uint64_t *p1 = reinterpret_cast<const uint64_t*>(&o[0]);
+        // const uint64_t *p2 = reinterpret_cast<const uint64_t*>(&m_bytes[0]);
+        // for (size_t i{0}; i < n_chunk; ++i) {
+        //     if ((*p1) != (*p2)) return false;
+        //     ++p1; ++p2;
+        // }
+        // return true;
     }
 
 };
