@@ -252,6 +252,22 @@ void ImageDeduper::process_pipeline() {
     m_samples.save_samples_dhash(dhash_dedup_savepth + ".dhash");
     cout << "\t- time used: " << timer.time_duration("step") << endl;
 
+    // dedup by phash
+    // cout << "generate all phash" << endl;
+    // timer.start("step");
+    // string phash_savepth = md5_dedup_savepth + ".phash";
+    // m_samples.gen_all_phashes();
+    // m_samples.save_samples_phash(phash_savepth);
+    // cout << "\t- time used: " << timer.time_duration("step") << endl;
+
+    // cout << "dedup by phash" << endl;
+    // timer.start("step");
+    // string phash_dedup_savepth = phash_savepth + ".dedup";
+    // m_samples.dedup_by_phash(phash_savepth);
+    // m_samples.save_keys(phash_dedup_savepth);
+    // m_samples.save_samples_phash(phash_dedup_savepth + ".phash");
+    // cout << "\t- time used: " << timer.time_duration("step") << endl;
+
     cout << "time of whole pipeline: " << timer.time_duration("global") << endl;
 }
 

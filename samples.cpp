@@ -206,7 +206,7 @@ void sample_set::cleanup_dhash(const bool keep_memory) {
 
 
 void sample_set::gen_all_dhashes() {
-    uint16_t hw = std::sqrt(n_bytes * 8 / 2);
+    uint16_t hw = std::sqrt(nbytes_dhash * 8 / 2);
     if (hw % 8 != 0) {
         cout << "[warning]: num of bytes for dhash should be divisible by 8" << endl;
     }
@@ -253,6 +253,56 @@ void sample_set::drop_exists_by_dhash(const sample_set& other) {
 
 void sample_set::save_samples_dhash(const string& savepth) const {
     save_samples<dhash_t>(savepth, keys, v_dhash);
+}
+
+void sample_set::load_samples_phash(const string& inpth) {
+    load_keys_values(inpth, keys, v_phash);
+}
+
+void sample_set::cleanup_phash(const bool keep_memory) {
+    cleanup_vector(v_phash, keep_memory);
+}
+
+void sample_set::gen_all_phashes() {
+    size_t hw = static_cast<size_t>(std::sqrt(nbytes_phash)) << 2;
+    CHECK ((hw & 1) == 1) << "[error]: should resize image to even size, please reconsider nbytes_phash" << endl;
+
+    // must use std::function as ret type here
+    // std::async cannot recognize if we use auto
+    using func_t = std::function<phash_t(const string&)>; 
+    func_t phash_func = std::bind(compute_phash, std::placeholders::_1, hw);
+    gen_all_samples<phash_t>(n_proc, keys, v_phash, phash_func);
+}
+
+void sample_set::dedup_by_phash() {
+    this->dedup_by_phash("");
+}
+
+void sample_set::dedup_by_phash(const string& savename) {
+    dedup_by_identical_hash(keys, v_phash);
+    auto dup_inds = dedup_by_hash_bits_diff(keys, v_phash, n_proc, savename);
+
+    cout << "\t- remove inds and save" << endl;
+    this->remove_by_inds(dup_inds);
+    cout << "\t- num of remaining samples: " << keys.size() << endl;
+}
+
+void sample_set::merge_other_phash(const sample_set& other) {
+    cout << "\t- merge" << endl;
+    auto dup_inds_src = get_dup_inds_rectangle(other.v_phash, v_phash, n_proc);
+    sample_set src(other);
+    src.remove_by_inds(dup_inds_src);
+    this->concat_other(src);
+}
+
+void sample_set::drop_exists_by_phash(const sample_set& other) {
+    cout << "\t- find and drop" << endl;
+    auto dup_inds = get_dup_inds_rectangle(v_phash, other.v_phash, n_proc);
+    this->remove_by_inds(dup_inds);
+}
+
+void sample_set::save_samples_phash(const string& savepth) const {
+    save_samples<phash_t>(savepth, keys, v_phash);
 }
 
 
@@ -595,7 +645,7 @@ vector<size_t> rectangle_worker(const size_t tid, const size_t n_proc,
     size_t n_gallery = other.size();
     for (size_t i{tid}; i < n_loop; i += n_proc) {
         for (size_t j{0}; j < n_gallery; ++j) {
-            uint16_t diff = dhash_t::count_diff_bits(current[i], other[j]);
+            uint16_t diff = hash_t::count_diff_bits(current[i], other[j]);
             if (diff < thr) {
                 res.push_back(i);
                 break;

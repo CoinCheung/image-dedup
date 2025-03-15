@@ -82,7 +82,7 @@ int main(int argc, char* argv[]) {
     img_deduper.run_cmd();
 
     // TODO: 
-    // 1. add phash/whash, possible with 7x7 smooth
+    // 1. add whash
     // 2. add pdq-hash
 
     return 0;

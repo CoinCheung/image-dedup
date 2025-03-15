@@ -39,6 +39,15 @@ public:
     void drop_exists_by_dhash(const sample_set&);
     void save_samples_dhash(const string&) const;
 
+    void load_samples_phash(const string&);
+    void cleanup_phash(const bool keep_memory);
+    void gen_all_phashes();
+    void dedup_by_phash();
+    void dedup_by_phash(const string&);
+    void merge_other_phash(const sample_set&);
+    void drop_exists_by_phash(const sample_set&);
+    void save_samples_phash(const string&) const;
+
     void load_samples_md5(const string&);
     void cleanup_md5(const bool keep_memory);
     void gen_all_md5s();
@@ -52,6 +61,7 @@ public:
 private:
     vector<string> keys;
     vector<dhash_t> v_dhash;
+    vector<phash_t> v_phash;
     vector<md5_t> v_md5;
     // vector<binhash_t> v_binhash;
 

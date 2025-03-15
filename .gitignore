@@ -36,4 +36,6 @@ annos/*
 run_dedup
 
 useless.cpp
+useless.sh
+useless.py
 useless

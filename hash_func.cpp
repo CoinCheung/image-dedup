@@ -2,11 +2,14 @@
 #include <string>
 #include <cstdint>
 #include <vector>
+#include <numeric>
 
 #include <opencv2/opencv.hpp>
 #include <openssl/evp.h>
 
 #include "hash_func.h"
+#include "utils.h"
+
 
 
 vector<char> read_bin(const string& path) {
@@ -17,10 +20,8 @@ vector<char> read_bin(const string& path) {
     // return ss.str();
 
     ifstream fin(path, ios::in|ios::binary);
-    if (!fin.is_open()) {
-        cerr << "[ERROR] open for read fail: " << path 
+    CHECK(fin.is_open()) << "[ERROR] open for read fail: " << path 
             << ", errno: " << errno << endl;
-    }
 
     fin.seekg(0, fin.end); fin.clear();
     size_t len = fin.tellg();
@@ -70,7 +71,7 @@ binhash_t compute_binbash(const string& path) {
 
 dhash_t compute_dhash(const string& path, const uint16_t hw) {
     cv::Mat im = cv::imread(path, cv::IMREAD_GRAYSCALE);
-    if (im.empty()) cout << "empty image: " << path << endl;
+    CHECK(!im.empty()) <<  "empty image: " << path << endl;
 
     cv::Mat resize;
     cv::resize(im, resize, cv::Size(hw + 1, hw + 1), 0, 0, cv::INTER_AREA);
@@ -126,3 +127,69 @@ dhash_t compute_dhash(const string& path, const uint16_t hw) {
     return hash;
 }
 
+
+/* 
+ * this is same as following python implementation(for 64-bit phash)
+ * def phash_func(image, hash_size=8, highfreq_factor=4):
+ *     img_size = hash_size * highfreq_factor
+ *     image = cv2.resize(image, [img_size, img_size], interpolation=cv2.INTER_AREA)
+ *     pixels = np.asarray(image).astype(np.float32)
+ *     dct = cv2.dct(pixels)
+ *     dct_low_freq = dct[:hash_size, :hash_size].ravel()
+ *     med = np.median(dct_low_freq)
+ *     hash = (dct_low_freq > med)
+ *     return hash
+ *  */
+phash_t compute_phash(const string& path, const uint16_t hw) {
+    cv::Mat im = cv::imread(path, cv::IMREAD_GRAYSCALE);
+    CHECK(!im.empty()) <<  "empty image: " << path << endl;
+
+    cv::Mat im_resize;
+    cv::resize(im, im_resize, cv::Size(hw, hw), 0, 0, cv::INTER_AREA);
+
+    im_resize.convertTo(im_resize, CV_32F);
+
+    cv::Mat im_dct;
+    cv::dct(im_resize, im_dct);
+
+    size_t sub_hw = hw >> 2;
+    size_t nbits = sub_hw * sub_hw;
+    vector<float> dct_vec; dct_vec.reserve(nbits);
+
+    for (size_t h{0}; h < sub_hw; ++h) {
+        float* ptr = im_dct.ptr<float>(h);
+        for (size_t w{0}; w < sub_hw; ++w) {
+            dct_vec.push_back(ptr[w]);
+        }
+    }
+
+    float thresh{0.};
+    // use median
+    vector<float> tmp(dct_vec.begin(), dct_vec.end());
+    std::sort(tmp.begin(), tmp.end());
+    thresh = (tmp[nbits >> 1] + tmp[(nbits >> 1) - 1]) / 2.;
+
+    // use avg
+    // thresh = std::accumulate(dct_vec.begin(), dct_vec.end(), 0.);
+    // thresh /= static_cast<float>(nbits);
+
+    phash_t hash{};
+    uint8_t byte{0};
+    size_t byte_ind{0};
+    size_t cnt{0};
+    for (float v : dct_vec) {
+        byte = (byte << 1);
+        if (v > thresh) {
+            ++byte;
+        }
+        ++cnt;
+        if (cnt == 8) {
+            hash[byte_ind] = byte;
+            cnt = 0;
+            byte = 0;
+            ++byte_ind;
+        }
+    }
+
+    return hash;
+}
