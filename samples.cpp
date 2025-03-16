@@ -20,7 +20,6 @@ using namespace std;
 
 // uint16_t thr = 10;
 // uint16_t thr = 30;
-uint16_t thr = 200;
 
 
 //////////////////////////////
@@ -58,8 +57,8 @@ template<typename hash_t>
 void dedup_by_identical_hash(vector<string>&, vector<hash_t>&);
 
 template<typename hash_t>
-vector<size_t> dedup_by_hash_bits_diff(vector<string>& keys, 
-        vector<hash_t>& v_hash, size_t n_proc, const string& name);
+vector<size_t> dedup_by_hash_bits_diff(vector<string>& keys, vector<hash_t>& v_hash, 
+        size_t n_proc, const string& name, const uint16_t thr);
 
 template<typename... Ts>
 void remove_by_given_inds(const vector<size_t>& inds, vector<Ts>&... vecs);
@@ -67,16 +66,16 @@ void remove_by_given_inds(const vector<size_t>& inds, vector<Ts>&... vecs);
 vector<size_t> remove_dups_from_pairs(const vector<pair_t>&);
 
 template<typename hash_t>
-vector<pair_t> get_dup_pairs_down_triangle(const vector<hash_t>&, const size_t);
+vector<pair_t> get_dup_pairs_down_triangle(const vector<hash_t>&, const size_t, const uint16_t);
 template<typename hash_t>
-vector<pair_t> down_triangle_worker(const size_t, const size_t, const vector<hash_t>&);
+vector<pair_t> down_triangle_worker(const size_t, const size_t, const vector<hash_t>&, const uint16_t);
 
 template<typename hash_t>
 vector<size_t> get_dup_inds_rectangle(const vector<hash_t>&, 
-        const vector<hash_t>&, const size_t);
+        const vector<hash_t>&, const size_t, const uint16_t);
 template<typename hash_t>
 vector<size_t> rectangle_worker(const size_t, const size_t, 
-        const vector<hash_t>&, const vector<hash_t>&);
+        const vector<hash_t>&, const vector<hash_t>&, const uint16_t);
 
 
 } // namespace
@@ -96,6 +95,7 @@ sample_set::sample_set(const sample_set& other) {
     keys    = other.keys;
     v_md5   = other.v_md5;
     v_dhash = other.v_dhash;
+    v_phash = other.v_phash;
 }
 
 
@@ -104,6 +104,7 @@ sample_set::sample_set(sample_set&& other) {
     std::swap(keys, other.keys);
     std::swap(v_md5, other.v_md5);
     std::swap(v_dhash, other.v_dhash);
+    std::swap(v_phash, other.v_phash);
 }
 
 
@@ -117,6 +118,7 @@ void sample_set::concat_other(const sample_set& other) {
     std::copy(other.keys.begin(),    other.keys.end(),    std::back_inserter(keys));
     std::copy(other.v_md5.begin(),   other.v_md5.end(),   std::back_inserter(v_md5));
     std::copy(other.v_dhash.begin(), other.v_dhash.end(), std::back_inserter(v_dhash));
+    std::copy(other.v_phash.begin(), other.v_phash.end(), std::back_inserter(v_phash));
 }
 
 
@@ -128,14 +130,17 @@ void sample_set::remove_by_inds(const vector<size_t>& inds) {
         if (us.find(i) != us.end()) continue;
         if (keys.size() > 0) keys[pos] = keys[i];
         if (v_dhash.size() > 0) v_dhash[pos] = v_dhash[i];
+        if (v_phash.size() > 0) v_phash[pos] = v_phash[i];
         if (v_md5.size() > 0) v_md5[pos] = v_md5[i];
         ++pos;
     }
     if (keys.size() > 0) keys.resize(pos);
     if (v_dhash.size() > 0) v_dhash.resize(pos);
+    if (v_phash.size() > 0) v_phash.resize(pos);
     if (v_md5.size() > 0) v_md5.resize(pos);
 }
 
+//// until here: add new fields
 
 void sample_set::load_keys(const string& inpth) {
     cout << "\t- load from: " << inpth << endl;
@@ -226,7 +231,7 @@ void sample_set::dedup_by_dhash() {
 
 void sample_set::dedup_by_dhash(const string& savename) {
     dedup_by_identical_hash(keys, v_dhash);
-    auto dup_inds = dedup_by_hash_bits_diff(keys, v_dhash, n_proc, savename);
+    auto dup_inds = dedup_by_hash_bits_diff(keys, v_dhash, n_proc, savename, thr_dhash);
 
     cout << "\t- remove inds and save" << endl;
     this->remove_by_inds(dup_inds);
@@ -236,7 +241,7 @@ void sample_set::dedup_by_dhash(const string& savename) {
 
 void sample_set::merge_other_dhash(const sample_set& other) {
     cout << "\t- merge" << endl;
-    auto dup_inds_src = get_dup_inds_rectangle(other.v_dhash, v_dhash, n_proc);
+    auto dup_inds_src = get_dup_inds_rectangle(other.v_dhash, v_dhash, n_proc, thr_dhash);
     sample_set src(other);
     src.remove_by_inds(dup_inds_src);
     this->concat_other(src);
@@ -246,7 +251,7 @@ void sample_set::merge_other_dhash(const sample_set& other) {
 
 void sample_set::drop_exists_by_dhash(const sample_set& other) {
     cout << "\t- find and drop" << endl;
-    auto dup_inds = get_dup_inds_rectangle(v_dhash, other.v_dhash, n_proc);
+    auto dup_inds = get_dup_inds_rectangle(v_dhash, other.v_dhash, n_proc, thr_dhash);
     this->remove_by_inds(dup_inds);
 }
 
@@ -264,8 +269,10 @@ void sample_set::cleanup_phash(const bool keep_memory) {
 }
 
 void sample_set::gen_all_phashes() {
-    size_t hw = static_cast<size_t>(std::sqrt(nbytes_phash)) << 2;
-    CHECK ((hw & 1) == 1) << "[error]: should resize image to even size, please reconsider nbytes_phash" << endl;
+    size_t hw = static_cast<size_t>(std::sqrt(nbytes_phash << 3)) << 2;
+    CHECK ((hw & 1) == 0) << "[error]: should resize image to even size, "
+        << "nbytes_phash is: " << nbytes_phash 
+        << ", resize size is: " << hw << endl;
 
     // must use std::function as ret type here
     // std::async cannot recognize if we use auto
@@ -280,7 +287,7 @@ void sample_set::dedup_by_phash() {
 
 void sample_set::dedup_by_phash(const string& savename) {
     dedup_by_identical_hash(keys, v_phash);
-    auto dup_inds = dedup_by_hash_bits_diff(keys, v_phash, n_proc, savename);
+    auto dup_inds = dedup_by_hash_bits_diff(keys, v_phash, n_proc, savename, thr_phash);
 
     cout << "\t- remove inds and save" << endl;
     this->remove_by_inds(dup_inds);
@@ -289,7 +296,7 @@ void sample_set::dedup_by_phash(const string& savename) {
 
 void sample_set::merge_other_phash(const sample_set& other) {
     cout << "\t- merge" << endl;
-    auto dup_inds_src = get_dup_inds_rectangle(other.v_phash, v_phash, n_proc);
+    auto dup_inds_src = get_dup_inds_rectangle(other.v_phash, v_phash, n_proc, thr_phash);
     sample_set src(other);
     src.remove_by_inds(dup_inds_src);
     this->concat_other(src);
@@ -297,7 +304,7 @@ void sample_set::merge_other_phash(const sample_set& other) {
 
 void sample_set::drop_exists_by_phash(const sample_set& other) {
     cout << "\t- find and drop" << endl;
-    auto dup_inds = get_dup_inds_rectangle(v_phash, other.v_phash, n_proc);
+    auto dup_inds = get_dup_inds_rectangle(v_phash, other.v_phash, n_proc, thr_phash);
     this->remove_by_inds(dup_inds);
 }
 
@@ -383,7 +390,7 @@ void load_keys_values(const string& inpth, vector<string>& keys, vector<hash_t>&
         string key = buf.substr(0, pos);
         string code = buf.substr(pos + 1);
         keys.push_back(key);
-        v_hash.emplace_back(code);
+        v_hash.push_back(hash_t::create_from_string_hex(code));
     }
 }
 
@@ -464,6 +471,7 @@ template<typename hash_t>
 void dedup_by_identical_hash(vector<string>& keys, vector<hash_t>& samples) {
     CHECK(keys.size() == samples.size()) << "size of keys and samples should be same !!" << endl;
 
+    cout << "\t- remove samples with identical hash code" << endl;
     size_t n_samples = keys.size();
     // unordered_set<hash_t> hashset; // hash may collapse, so we use set
     set<hash_t> hashset;
@@ -481,10 +489,10 @@ void dedup_by_identical_hash(vector<string>& keys, vector<hash_t>& samples) {
 // TODO: here return inds, then see if we can remove inds for all hashes
 template<typename hash_t>
 vector<size_t> dedup_by_hash_bits_diff(vector<string>& keys, 
-        vector<hash_t>& v_hash, size_t n_proc, const string& name) {
+        vector<hash_t>& v_hash, size_t n_proc, const string& name, const uint16_t thr) {
 
     cout << "\t- compare each pair" << endl;
-    auto dup_pairs_ind = get_dup_pairs_down_triangle(v_hash, n_proc);
+    auto dup_pairs_ind = get_dup_pairs_down_triangle(v_hash, n_proc, thr);
 
     if (name != "") {
         auto dup_pairs_str = pair_t::inds_to_strings_vector(keys, dup_pairs_ind);
@@ -563,12 +571,13 @@ vector<size_t> remove_dups_from_pairs(const vector<pair_t>& dup_pairs) {
 
 
 template<typename hash_t>
-vector<pair_t> get_dup_pairs_down_triangle(const vector<hash_t>& samples, const size_t n_proc) {
+vector<pair_t> get_dup_pairs_down_triangle(const vector<hash_t>& samples, 
+        const size_t n_proc, const uint16_t thr) {
 
     vector<std::future<vector<pair_t>>> futures(n_proc);
     for (size_t tid = 0; tid < n_proc; ++tid) {
         futures[tid] = std::async(std::launch::async,
-                down_triangle_worker<hash_t>, tid, n_proc, std::ref(samples));
+                down_triangle_worker<hash_t>, tid, n_proc, std::ref(samples), thr);
     }
 
     vector<pair_t> res;
@@ -582,7 +591,8 @@ vector<pair_t> get_dup_pairs_down_triangle(const vector<hash_t>& samples, const 
 
 
 template<typename hash_t>
-vector<pair_t> down_triangle_worker(const size_t tid, const size_t n_proc, const vector<hash_t>& samples) {
+vector<pair_t> down_triangle_worker(const size_t tid, const size_t n_proc, 
+        const vector<hash_t>& samples, const uint16_t thr) {
     size_t n_samples = samples.size();
     // size_t res_size = n_samples * (n_samples + 1) / 2 / n_proc + 1;
     size_t res_size = 20000; // too large will cause bad allocate memory error
@@ -614,12 +624,12 @@ vector<pair_t> down_triangle_worker(const size_t tid, const size_t n_proc, const
 
 template<typename hash_t>
 vector<size_t> get_dup_inds_rectangle(const vector<hash_t>& current, 
-        const vector<hash_t>& other, const size_t n_proc) {
+        const vector<hash_t>& other, const size_t n_proc, const uint16_t thr) {
     
     using func_t = std::function<vector<size_t>(const size_t&)>; 
     func_t worker_func = std::bind(rectangle_worker<hash_t>, 
             std::placeholders::_1, n_proc, std::ref(current), 
-            std::ref(other));
+            std::ref(other), thr);
 
     vector<std::future<vector<size_t>>> futures(n_proc);
     for (size_t tid = 0; tid < n_proc; ++tid) {
@@ -638,7 +648,7 @@ vector<size_t> get_dup_inds_rectangle(const vector<hash_t>& current,
 
 template<typename hash_t>
 vector<size_t> rectangle_worker(const size_t tid, const size_t n_proc, 
-        const vector<hash_t>& current, const vector<hash_t>& other) {
+        const vector<hash_t>& current, const vector<hash_t>& other, const uint16_t thr) {
 
     vector<size_t> res;
     size_t n_loop = current.size();

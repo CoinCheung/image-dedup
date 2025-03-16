@@ -52,6 +52,14 @@ pushd ${root_dir}/
     # rm ${prefix}.filt.md5.dedup
     # time ./run_dedup dedup_md5 $n_proc ${prefix}.filt.md5
 
+    # rm ${prefix}.filt.md5.dedup.phash
+    # time ./run_dedup gen_phash $n_proc ${prefix}.filt.md5.dedup
+
+    # rm ${prefix}.filt.md5.dedup.phash.pair
+    # rm ${prefix}.filt.md5.dedup.phash.dedup
+    # rm ${prefix}.filt.md5.dedup.phash.dedup.phash
+    # time ./run_dedup dedup_phash $n_proc ${prefix}.filt.md5.dedup.phash
+
     # rm ${prefix}.filt.md5.dedup.dhash
     # time ./run_dedup gen_dhash $n_proc ${prefix}.filt.md5.dedup
 

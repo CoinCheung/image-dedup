@@ -37,10 +37,11 @@ struct big_int {
 
     big_int(const big_int<size>& b): m_bytes(b.m_bytes) {}
 
-    big_int(string s) {
-        from_hex_string(s);
+    static big_int<size> create_from_string_hex(const string& s) {
+        big_int<size> res{};
+        res.from_hex_string(s);
+        return res;
     }
-
 
     void from_hex_string(string inp) {
         // TODO: HERE should have length check and char range is 0-f

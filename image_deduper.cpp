@@ -62,6 +62,26 @@ void ImageDeduper::parse_args(int argc, char* argv[]) {
         m_dst_paths.push_back(argv[4]);
         m_funcs[m_cmd] = std::bind(&ImageDeduper::remain_datasets_dhash, this);
 
+    } else if (m_cmd == "gen_phash") {
+        m_src_paths.push_back(argv[3]);
+        m_funcs[m_cmd] = std::bind(&ImageDeduper::gen_all_phash, this);
+
+    } else if (m_cmd == "dedup_phash") {
+        m_src_paths.push_back(argv[3]);
+        m_funcs[m_cmd] = std::bind(&ImageDeduper::dedup_one_dataset_phash, this);
+
+    } else if (m_cmd == "merge_phash") {
+        for (int i{3}; i < argc - 1; ++i) {
+            m_src_paths.push_back(argv[i]);
+        }
+        m_dst_paths.push_back(argv[argc - 1]);
+        m_funcs[m_cmd] = std::bind(&ImageDeduper::merge_datasets_phash, this);
+
+    } else if (m_cmd == "remain_phash") {
+        m_src_paths.push_back(argv[3]);
+        m_dst_paths.push_back(argv[4]);
+        m_funcs[m_cmd] = std::bind(&ImageDeduper::remain_datasets_phash, this);
+
     } else if (m_cmd == "pipeline") {
         m_src_paths.push_back(argv[3]);
         m_funcs[m_cmd] = std::bind(&ImageDeduper::process_pipeline, this);
@@ -93,6 +113,7 @@ void ImageDeduper::filter_out_images() {
     m_samples.save_keys(inpth + ".filt");
 }
 
+//// dhash relevant
 
 void ImageDeduper::gen_all_dhash() {
     /// generate dhashes given paths of images
@@ -153,6 +174,70 @@ void ImageDeduper::remain_datasets_dhash() {
     m_samples.save_keys(src_path + ".rem");
 }
 
+
+//// phash relevant
+
+void ImageDeduper::gen_all_phash() {
+    /// generate phashes given paths of images
+    cout << "generate all phash" << endl;
+
+    string inpth = m_src_paths[0];
+
+    m_samples.load_keys(inpth);
+    m_samples.gen_all_phashes();
+    m_samples.save_samples_phash(inpth + ".phash");
+}
+
+
+void ImageDeduper::dedup_one_dataset_phash() {
+    /// dedup within one dataset using phash
+    cout << "dedup by phash" << endl;
+
+    string inpth = m_src_paths[0];
+
+    m_samples.load_samples_phash(inpth); // TODO: here if samples is not empty, need to check whether inpth missing keys
+    m_samples.dedup_by_phash(inpth);
+    m_samples.save_samples_phash(inpth + ".dedup.phash");
+    m_samples.save_keys(inpth + ".dedup");
+}
+
+
+void ImageDeduper::merge_datasets_phash() {
+    /// merge multi datasets together, each of which has already been deduplicated
+    cout << "merge multiple deduped datasets by phash" << endl;
+
+    vector<string> inpths = m_src_paths;
+    string savepth = m_dst_paths[0];
+
+    size_t n = inpths.size();
+    for (size_t i{0}; i < n; ++i) {
+        sample_set samplesi;
+        samplesi.load_samples_phash(inpths[i]);
+        m_samples.merge_other_phash(samplesi);
+    }
+    m_samples.save_keys(savepth);
+}
+
+
+void ImageDeduper::remain_datasets_phash() {
+    /// drop those paths in src_path which duplicates with some path in dst_path
+    
+    string src_path = m_src_paths[0];
+    string dst_path = m_dst_paths[0];
+
+    cout << "obtain remaining images in: [" << src_path 
+         << "], after dropping those duplicates with images in: [" << dst_path << "]" << endl;
+
+    m_samples.load_samples_phash(src_path);
+    sample_set dst_samples;
+    dst_samples.load_samples_phash(dst_path);
+
+    m_samples.drop_exists_by_phash(dst_samples);
+    m_samples.save_keys(src_path + ".rem");
+}
+
+
+//// phash relevant
 
 void ImageDeduper::gen_all_md5() {
 
@@ -237,36 +322,36 @@ void ImageDeduper::process_pipeline() {
     cout << "\t- time used: " << timer.time_duration("step") << endl;
 
     // dedup by dhash
-    cout << "generate all dhash" << endl;
-    timer.start("step");
-    string dhash_savepth = md5_dedup_savepth + ".dhash";
-    m_samples.gen_all_dhashes();
-    m_samples.save_samples_dhash(dhash_savepth);
-    cout << "\t- time used: " << timer.time_duration("step") << endl;
+    // cout << "generate all dhash" << endl;
+    // timer.start("step");
+    // string dhash_savepth = md5_dedup_savepth + ".dhash";
+    // m_samples.gen_all_dhashes();
+    // m_samples.save_samples_dhash(dhash_savepth);
+    // cout << "\t- time used: " << timer.time_duration("step") << endl;
 
-    cout << "dedup by dhash" << endl;
-    timer.start("step");
-    string dhash_dedup_savepth = dhash_savepth + ".dedup";
-    m_samples.dedup_by_dhash(dhash_savepth);
-    m_samples.save_keys(dhash_dedup_savepth);
-    m_samples.save_samples_dhash(dhash_dedup_savepth + ".dhash");
-    cout << "\t- time used: " << timer.time_duration("step") << endl;
+    // cout << "dedup by dhash" << endl;
+    // timer.start("step");
+    // string dhash_dedup_savepth = dhash_savepth + ".dedup";
+    // m_samples.dedup_by_dhash(dhash_savepth);
+    // m_samples.save_keys(dhash_dedup_savepth);
+    // m_samples.save_samples_dhash(dhash_dedup_savepth + ".dhash");
+    // cout << "\t- time used: " << timer.time_duration("step") << endl;
 
     // dedup by phash
-    // cout << "generate all phash" << endl;
-    // timer.start("step");
-    // string phash_savepth = md5_dedup_savepth + ".phash";
-    // m_samples.gen_all_phashes();
-    // m_samples.save_samples_phash(phash_savepth);
-    // cout << "\t- time used: " << timer.time_duration("step") << endl;
+    cout << "generate all phash" << endl;
+    timer.start("step");
+    string phash_savepth = md5_dedup_savepth + ".phash";
+    m_samples.gen_all_phashes();
+    m_samples.save_samples_phash(phash_savepth);
+    cout << "\t- time used: " << timer.time_duration("step") << endl;
 
-    // cout << "dedup by phash" << endl;
-    // timer.start("step");
-    // string phash_dedup_savepth = phash_savepth + ".dedup";
-    // m_samples.dedup_by_phash(phash_savepth);
-    // m_samples.save_keys(phash_dedup_savepth);
-    // m_samples.save_samples_phash(phash_dedup_savepth + ".phash");
-    // cout << "\t- time used: " << timer.time_duration("step") << endl;
+    cout << "dedup by phash" << endl;
+    timer.start("step");
+    string phash_dedup_savepth = phash_savepth + ".dedup";
+    m_samples.dedup_by_phash(phash_savepth);
+    m_samples.save_keys(phash_dedup_savepth);
+    m_samples.save_samples_phash(phash_dedup_savepth + ".phash");
+    cout << "\t- time used: " << timer.time_duration("step") << endl;
 
     cout << "time of whole pipeline: " << timer.time_duration("global") << endl;
 }

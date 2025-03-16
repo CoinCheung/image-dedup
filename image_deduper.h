@@ -29,6 +29,11 @@ public:
     void merge_datasets_dhash();
     void remain_datasets_dhash();
 
+    void gen_all_phash();
+    void dedup_one_dataset_phash();
+    void merge_datasets_phash();
+    void remain_datasets_phash();
+
     void gen_all_md5();
     void dedup_one_dataset_md5();
 
