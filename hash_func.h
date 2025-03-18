@@ -9,7 +9,8 @@
 using namespace std;
 
 
-constexpr size_t nbytes_dhash = 256; // resize image to 32x32
+// constexpr size_t nbytes_dhash = 256; // resize image to 32x32
+constexpr size_t nbytes_dhash = 64; // resize image to 16x16
 constexpr size_t nbytes_phash = 32; // resize image to 64x64
                                 
 using dhash_t = big_int<nbytes_dhash>;

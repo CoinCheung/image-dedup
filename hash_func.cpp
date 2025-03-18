@@ -10,7 +10,12 @@
 #include "hash_func.h"
 #include "utils.h"
 
-
+/* 
+ * Difference between phash and whash:
+ * According to: https://www.ofcom.org.uk/siteassets/resources/documents/research-and-data/online-research/other/perceptual-hashing-technology.pdf?v=328806
+ * whash perform better on images with fewer but more intense perturbations. For example, a big non-transparent logo overlaying on an image
+ * phash perform better on images with less intense perturbation but covering large propotion on the image. For example, image-wide noise due to image compression or smoothing.
+ *  */
 
 vector<char> read_bin(const string& path) {
     // ifstream fin(path, ios::in);

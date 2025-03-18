@@ -321,22 +321,6 @@ void ImageDeduper::process_pipeline() {
     m_samples.save_keys(md5_dedup_savepth);
     cout << "\t- time used: " << timer.time_duration("step") << endl;
 
-    // dedup by dhash
-    // cout << "generate all dhash" << endl;
-    // timer.start("step");
-    // string dhash_savepth = md5_dedup_savepth + ".dhash";
-    // m_samples.gen_all_dhashes();
-    // m_samples.save_samples_dhash(dhash_savepth);
-    // cout << "\t- time used: " << timer.time_duration("step") << endl;
-
-    // cout << "dedup by dhash" << endl;
-    // timer.start("step");
-    // string dhash_dedup_savepth = dhash_savepth + ".dedup";
-    // m_samples.dedup_by_dhash(dhash_savepth);
-    // m_samples.save_keys(dhash_dedup_savepth);
-    // m_samples.save_samples_dhash(dhash_dedup_savepth + ".dhash");
-    // cout << "\t- time used: " << timer.time_duration("step") << endl;
-
     // dedup by phash
     cout << "generate all phash" << endl;
     timer.start("step");
@@ -352,6 +336,24 @@ void ImageDeduper::process_pipeline() {
     m_samples.save_keys(phash_dedup_savepth);
     m_samples.save_samples_phash(phash_dedup_savepth + ".phash");
     cout << "\t- time used: " << timer.time_duration("step") << endl;
+
+    // dedup by dhash
+    cout << "generate all dhash" << endl;
+    timer.start("step");
+    // string dhash_savepth = md5_dedup_savepth + ".dhash";
+    string dhash_savepth = phash_dedup_savepth + ".dhash";
+    m_samples.gen_all_dhashes();
+    m_samples.save_samples_dhash(dhash_savepth);
+    cout << "\t- time used: " << timer.time_duration("step") << endl;
+
+    cout << "dedup by dhash" << endl;
+    timer.start("step");
+    string dhash_dedup_savepth = dhash_savepth + ".dedup";
+    m_samples.dedup_by_dhash(dhash_savepth);
+    m_samples.save_keys(dhash_dedup_savepth);
+    m_samples.save_samples_dhash(dhash_dedup_savepth + ".dhash");
+    cout << "\t- time used: " << timer.time_duration("step") << endl;
+
 
     cout << "time of whole pipeline: " << timer.time_duration("global") << endl;
 }

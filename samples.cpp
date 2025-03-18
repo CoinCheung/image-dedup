@@ -18,8 +18,6 @@
 using namespace std;
 
 
-// uint16_t thr = 10;
-// uint16_t thr = 30;
 
 
 //////////////////////////////
@@ -171,6 +169,8 @@ void sample_set::cleanup_keys(const bool keep_memory) {
 void sample_set::filter_by_keys(std::function<bool(const string&)> func) {
     /// filter out images by some rule
 
+    size_t num_before = keys.size();
+
     using worker_t = std::function<vector<string>(size_t)>;
     worker_t worker_func = std::bind(filter_img_worker, 
             std::placeholders::_1, n_proc, std::ref(keys), func);
@@ -187,6 +187,8 @@ void sample_set::filter_by_keys(std::function<bool(const string&)> func) {
         std::copy(r.begin(), r.end(), std::back_inserter(res));
     }
     std::swap(keys, res);
+
+    cout << "\t- keys reduce from " << num_before << " to " << keys.size() << endl;
 }
 
 
@@ -250,9 +252,11 @@ void sample_set::merge_other_dhash(const sample_set& other) {
 
 
 void sample_set::drop_exists_by_dhash(const sample_set& other) {
-    cout << "\t- find and drop" << endl;
+    cout << "\t- find existing and drop" << endl;
+    size_t num_before = keys.size();
     auto dup_inds = get_dup_inds_rectangle(v_dhash, other.v_dhash, n_proc, thr_dhash);
     this->remove_by_inds(dup_inds);
+    cout << "\t- num of samples from " << num_before << " to " << keys.size() << endl;
 }
 
 
@@ -289,9 +293,10 @@ void sample_set::dedup_by_phash(const string& savename) {
     dedup_by_identical_hash(keys, v_phash);
     auto dup_inds = dedup_by_hash_bits_diff(keys, v_phash, n_proc, savename, thr_phash);
 
-    cout << "\t- remove inds and save" << endl;
+    cout << "\t- remove dup samples" << endl;
+    size_t num_before = keys.size();
     this->remove_by_inds(dup_inds);
-    cout << "\t- num of remaining samples: " << keys.size() << endl;
+    cout << "\t- num of samples from " << num_before << " to " << keys.size() << endl;
 }
 
 void sample_set::merge_other_phash(const sample_set& other) {
@@ -303,9 +308,11 @@ void sample_set::merge_other_phash(const sample_set& other) {
 }
 
 void sample_set::drop_exists_by_phash(const sample_set& other) {
-    cout << "\t- find and drop" << endl;
+    cout << "\t- find existing and drop" << endl;
+    size_t num_before = keys.size();
     auto dup_inds = get_dup_inds_rectangle(v_phash, other.v_phash, n_proc, thr_phash);
     this->remove_by_inds(dup_inds);
+    cout << "\t- num of samples from " << num_before << " to " << keys.size() << endl;
 }
 
 void sample_set::save_samples_phash(const string& savepth) const {
@@ -333,9 +340,7 @@ void sample_set::gen_all_md5s() {
 
 
 void sample_set::dedup_by_md5() {
-    cout << "\t- num of samples before dedup: " << keys.size() << endl;
     dedup_by_identical_hash<md5_t>(keys, v_md5);
-    cout << "\t- num of samples after dedup: " << keys.size() << endl;
 }
 
 
@@ -483,6 +488,7 @@ void dedup_by_identical_hash(vector<string>& keys, vector<hash_t>& samples) {
         hashset.insert(samples[i]);
     }
     remove_by_given_inds(inds, keys, samples);
+    cout << "\t- num of samples from " << n_samples << " to " << keys.size() << endl;
 }
 
 
