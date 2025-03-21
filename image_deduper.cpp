@@ -26,7 +26,7 @@ ImageDeduper::ImageDeduper() {}
 void ImageDeduper::parse_args(int argc, char* argv[]) {
     m_cmd = argv[1];
     auto get_n_proc = [](const char* s) {
-        size_t n_proc = static_cast<size_t>(std::stoi(string(s)));
+        uint32_t n_proc = static_cast<uint32_t>(std::stoi(string(s)));
         return n_proc;
     };
 
@@ -87,7 +87,7 @@ void ImageDeduper::parse_args(int argc, char* argv[]) {
         m_funcs[m_cmd] = std::bind(&ImageDeduper::process_pipeline, this);
     }
 
-    size_t n_proc = get_n_proc(argv[2]);
+    uint32_t n_proc = get_n_proc(argv[2]);
     m_samples.set_n_proc(n_proc);
 }
 
@@ -147,8 +147,8 @@ void ImageDeduper::merge_datasets_dhash() {
     vector<string> inpths = m_src_paths;
     string savepth = m_dst_paths[0];
 
-    size_t n = inpths.size();
-    for (size_t i{0}; i < n; ++i) {
+    uint32_t n = inpths.size();
+    for (uint32_t i{0}; i < n; ++i) {
         sample_set samplesi;
         samplesi.load_samples_dhash(inpths[i]);
         m_samples.merge_other_dhash(samplesi);
@@ -209,8 +209,8 @@ void ImageDeduper::merge_datasets_phash() {
     vector<string> inpths = m_src_paths;
     string savepth = m_dst_paths[0];
 
-    size_t n = inpths.size();
-    for (size_t i{0}; i < n; ++i) {
+    uint32_t n = inpths.size();
+    for (uint32_t i{0}; i < n; ++i) {
         sample_set samplesi;
         samplesi.load_samples_phash(inpths[i]);
         m_samples.merge_other_phash(samplesi);

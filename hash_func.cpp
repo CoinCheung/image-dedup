@@ -1,5 +1,6 @@
 
 #include <string>
+#include <array>
 #include <cstdint>
 #include <vector>
 #include <numeric>
@@ -42,17 +43,18 @@ vector<char> read_bin(const string& path) {
 md5_t compute_md5(const vector<char>& s) {
 
     const EVP_MD *md = EVP_md5();
-    unsigned int md_len = EVP_MD_size(md); // 16
+    uint32_t md_len = EVP_MD_size(md); // 16
+    CHECK(md_len == nbytes_md5) << "md5_t type size is different from openssl md5 size" << endl;
 
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();;
     EVP_DigestInit_ex(mdctx, md, nullptr);
 
     EVP_DigestUpdate(mdctx, &s[0], s.size());
 
-    md5_t md_value;
-    EVP_DigestFinal_ex(mdctx, &md_value[0], &md_len);
+    array<uint8_t, nbytes_md5> bytes; 
+    EVP_DigestFinal_ex(mdctx, &bytes[0], &md_len);
     EVP_MD_CTX_free(mdctx);
-    return md_value;
+    return md5_t::create_from_array_bytes(bytes);
 }
 
 md5_t compute_md5(const string& path) {
@@ -68,10 +70,7 @@ binhash_t compute_binbash(const string& path) {
             std::string(&bin[0], bin.size())
             );
 
-    binhash_t binhash;
-    std::memcpy(&binhash[0], &hv, sizeof(hv));
-
-    return binhash;
+    return binhash_t::create_from_size_t(hv);
 }
 
 dhash_t compute_dhash(const string& path, const uint16_t hw) {
@@ -83,22 +82,22 @@ dhash_t compute_dhash(const string& path, const uint16_t hw) {
 
     uint8_t *data = static_cast<uint8_t*>(resize.data);
 
-    dhash_t hash;
-    size_t byte_ind = 0;
+    array<uint8_t, nbytes_dhash> bytes; 
     uint8_t byte = 0;
+    uint32_t byte_ind = 0;
     uint8_t cnt = 0;
     uint16_t pos = 0;
     // traverse each row
-    for (size_t h{0}; h < hw; ++h) {
+    for (uint16_t h{0}; h < hw; ++h) {
         uint16_t ind1 = pos;
         uint16_t ind2 = ind1 + 1;
 
-        for (size_t w{0}; w < hw; ++w) {
+        for (uint16_t w{0}; w < hw; ++w) {
             byte = byte << 1;
             if (data[ind1] < data[ind2]) byte += 1;
 
             if (++cnt == 8) {
-                hash[byte_ind++] = byte;
+                bytes[byte_ind++] = byte;
                 cnt = 0;
                 byte = 0;
             }
@@ -111,16 +110,16 @@ dhash_t compute_dhash(const string& path, const uint16_t hw) {
     // traverse each column 
     byte = 0;
     cnt = 0;
-    for (size_t w{0}; w < hw; ++w) {
+    for (uint16_t w{0}; w < hw; ++w) {
         uint16_t ind1 = w;
         uint16_t ind2 = ind1 + hw + 1;
 
-        for (size_t h{0}; h < hw; ++h) {
+        for (uint16_t h{0}; h < hw; ++h) {
             byte = byte << 1;
             if (data[ind1] < data[ind2]) byte += 1;
 
             if (++cnt == 8) {
-                hash[byte_ind++] = byte;
+                bytes[byte_ind++] = byte;
                 cnt = 0;
                 byte = 0;
             }
@@ -129,7 +128,7 @@ dhash_t compute_dhash(const string& path, const uint16_t hw) {
         }
     }
 
-    return hash;
+    return dhash_t::create_from_array_bytes(bytes);
 }
 
 
@@ -157,13 +156,13 @@ phash_t compute_phash(const string& path, const uint16_t hw) {
     cv::Mat im_dct;
     cv::dct(im_resize, im_dct);
 
-    size_t sub_hw = hw >> 2;
-    size_t nbits = sub_hw * sub_hw;
+    uint16_t sub_hw = hw >> 2;
+    uint32_t nbits = sub_hw * sub_hw;
     vector<float> dct_vec; dct_vec.reserve(nbits);
 
-    for (size_t h{0}; h < sub_hw; ++h) {
+    for (uint16_t h{0}; h < sub_hw; ++h) {
         float* ptr = im_dct.ptr<float>(h);
-        for (size_t w{0}; w < sub_hw; ++w) {
+        for (uint16_t w{0}; w < sub_hw; ++w) {
             dct_vec.push_back(ptr[w]);
         }
     }
@@ -178,10 +177,10 @@ phash_t compute_phash(const string& path, const uint16_t hw) {
     // thresh = std::accumulate(dct_vec.begin(), dct_vec.end(), 0.);
     // thresh /= static_cast<float>(nbits);
 
-    phash_t hash{};
+    array<uint8_t, nbytes_phash> bytes; 
+    uint32_t byte_ind = 0;
     uint8_t byte{0};
-    size_t byte_ind{0};
-    size_t cnt{0};
+    uint16_t cnt{0};
     for (float v : dct_vec) {
         byte = (byte << 1);
         if (v > thresh) {
@@ -189,12 +188,11 @@ phash_t compute_phash(const string& path, const uint16_t hw) {
         }
         ++cnt;
         if (cnt == 8) {
-            hash[byte_ind] = byte;
+            bytes[byte_ind++] = byte;
             cnt = 0;
             byte = 0;
-            ++byte_ind;
         }
     }
 
-    return hash;
+    return phash_t::create_from_array_bytes(bytes);
 }

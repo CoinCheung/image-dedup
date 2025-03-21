@@ -68,7 +68,7 @@ private:
     vector<md5_t> v_md5;
     // vector<binhash_t> v_binhash;
 
-    size_t n_proc;
+    uint32_t n_proc;
 };
 
 #endif

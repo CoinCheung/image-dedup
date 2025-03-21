@@ -28,35 +28,52 @@ using namespace std;
 template <std::size_t size>
 struct big_int {
     std::array<std::uint8_t, size> m_bytes;
+    uint32_t n_bits_set;
 
     static const unordered_map<char, uint8_t> hex_to_uint8;
     static const string uint8_to_hex;
     static const vector<uint8_t> count_bits_table;
 
-    big_int() {}
+    big_int(): n_bits_set(0) {}
 
-    big_int(const big_int<size>& b): m_bytes(b.m_bytes) {}
+    big_int(const big_int<size>& b): m_bytes(b.m_bytes), n_bits_set(b.n_bits_set) {}
 
-    static big_int<size> create_from_string_hex(const string& s) {
+    static big_int<size> create_from_string_hex(const string& inp) {
         big_int<size> res{};
-        res.from_hex_string(s);
-        return res;
-    }
-
-    void from_hex_string(string inp) {
         // TODO: HERE should have length check and char range is 0-f
         if (inp.size() != size * 2) {
             cerr << "[ERROR] hex string should have length of " 
                 << size * 2 << ", but this string has length of " << inp.size() 
                 << ": " << inp << endl;
         }
+        res.n_bits_set = 0;
         size_t pos = 0;
         for (size_t i{0}; i < size; ++i) {
+            uint8_t byte;
             // m_bytes[i] = hex_to_uint8[inp[pos++]] << 4;
             // m_bytes[i] += hex_to_uint8[inp[pos++]];
-            m_bytes[i] = hex_to_uint8.at(inp[pos++]) << 4;
-            m_bytes[i] += hex_to_uint8.at(inp[pos++]);
+            byte = hex_to_uint8.at(inp[pos++]) << 4;
+            byte += hex_to_uint8.at(inp[pos++]);
+
+            res.m_bytes[i] = byte;
+            res.n_bits_set += count_bits_table[byte];
         }
+        return res;
+    }
+
+    static big_int<size> create_from_size_t(const size_t& val) {
+        static_assert(size == sizeof(size_t), "create_from_size_t: hash n_bytes and sizeof(size_t) is different !!\n");
+        big_int<size> res{};
+        std::memcpy(&res.m_bytes[0], &val, sizeof(size_t));
+        res.update_n_bits_set();
+        return res;
+    }
+
+    static big_int<size> create_from_array_bytes(const array<uint8_t, size>& bytes) {
+        big_int<size> res{};
+        res.m_bytes = bytes;
+        res.update_n_bits_set();
+        return res;
     }
 
     string to_hex_string() const {
@@ -70,6 +87,33 @@ struct big_int {
         }
         return res;
     }
+
+    void update_n_bits_set() {
+        n_bits_set = 0;
+        size_t n_rem = size;
+        while (n_rem > sizeof(uint64_t)) {
+            size_t pos = size - n_rem;
+            uint64_t val;
+            std::memcpy(&val, &m_bytes[pos], sizeof(uint64_t));
+            n_bits_set += std::popcount(val);
+            n_rem -= sizeof(uint64_t);
+        }
+        // for remainings
+        if (n_rem > sizeof(uint32_t)) {
+            size_t pos = size - n_rem;
+            uint32_t val;
+            std::memcpy(&val, &m_bytes[pos], sizeof(uint32_t));
+            n_bits_set += std::popcount(val);
+            n_rem -= sizeof(uint32_t);
+        }
+        while (n_rem > 0) {
+            size_t pos = size - n_rem;
+            uint8_t ind = m_bytes[pos];
+            n_bits_set += count_bits_table[ind];
+            --n_rem;
+        }
+    }
+
 
     void left_move_add_byte(uint8_t byte) {
         size_t n = size - 1;
@@ -168,9 +212,9 @@ struct big_int {
         return res;
     }
 
-    uint8_t& operator[] (size_t ind) {
-        return m_bytes[ind];
-    }
+    // uint8_t& operator[] (size_t ind) {
+    //     return m_bytes[ind];
+    // }
 
     const uint8_t& operator[] (size_t ind) const {
         return m_bytes[ind];

@@ -73,7 +73,7 @@ pushd ${root_dir}/
 
 
     ## pipeline
-    # time ./run_dedup pipeline $n_proc ./tmp/pipeline/in1k.txt 
+    time ./run_dedup pipeline $n_proc ./tmp/pipeline/in1k.txt 
     # time ./run_dedup pipeline $n_proc ./annos/in1k/in1k.txt
     # time ./run_dedup pipeline $n_proc ./annos/in21k/in21k.txt
     
@@ -82,7 +82,7 @@ pushd ${root_dir}/
     # time ./run_dedup gen_phash $n_proc ./annos/in1k/in1k.txt.filt.md5.dedup.phash.dedup.dhash.dedup
     # time ./run_dedup remain_phash $n_proc ./annos/in21k/in21k.txt.filt.md5.dedup.phash.dedup.dhash.dedup.phash ./annos/in1k/in1k.txt.filt.md5.dedup.phash.dedup.dhash.dedup.phash
     
-    ./run_dedup pipeline 32 ./annos/combine-8.5m/image_list.txt
+    # ./run_dedup pipeline 32 ./annos/combine-8.5m/image_list.txt
 
 popd
 

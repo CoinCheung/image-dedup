@@ -84,6 +84,7 @@ int main(int argc, char* argv[]) {
     // TODO: 
     // 1. add whash
     // 2. add pdq-hash
+    // 3. refine compare speed, add function of nlogN, by sort or tree method.
 
     return 0;
 }
