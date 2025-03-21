@@ -28,15 +28,14 @@ using namespace std;
 template <std::size_t size>
 struct big_int {
     std::array<std::uint8_t, size> m_bytes;
-    uint32_t n_bits_set;
 
     static const unordered_map<char, uint8_t> hex_to_uint8;
     static const string uint8_to_hex;
     static const vector<uint8_t> count_bits_table;
 
-    big_int(): n_bits_set(0) {}
+    big_int() {}
 
-    big_int(const big_int<size>& b): m_bytes(b.m_bytes), n_bits_set(b.n_bits_set) {}
+    big_int(const big_int<size>& b): m_bytes(b.m_bytes) {}
 
     static big_int<size> create_from_string_hex(const string& inp) {
         big_int<size> res{};
@@ -46,7 +45,6 @@ struct big_int {
                 << size * 2 << ", but this string has length of " << inp.size() 
                 << ": " << inp << endl;
         }
-        res.n_bits_set = 0;
         size_t pos = 0;
         for (size_t i{0}; i < size; ++i) {
             uint8_t byte;
@@ -56,7 +54,6 @@ struct big_int {
             byte += hex_to_uint8.at(inp[pos++]);
 
             res.m_bytes[i] = byte;
-            res.n_bits_set += count_bits_table[byte];
         }
         return res;
     }
@@ -65,14 +62,12 @@ struct big_int {
         static_assert(size == sizeof(size_t), "create_from_size_t: hash n_bytes and sizeof(size_t) is different !!\n");
         big_int<size> res{};
         std::memcpy(&res.m_bytes[0], &val, sizeof(size_t));
-        res.update_n_bits_set();
         return res;
     }
 
     static big_int<size> create_from_array_bytes(const array<uint8_t, size>& bytes) {
         big_int<size> res{};
         res.m_bytes = bytes;
-        res.update_n_bits_set();
         return res;
     }
 
@@ -88,8 +83,8 @@ struct big_int {
         return res;
     }
 
-    void update_n_bits_set() {
-        n_bits_set = 0;
+    size_t count_nbits_set() const {
+        size_t n_bits_set = 0;
         size_t n_rem = size;
         while (n_rem > sizeof(uint64_t)) {
             size_t pos = size - n_rem;
@@ -112,6 +107,7 @@ struct big_int {
             n_bits_set += count_bits_table[ind];
             --n_rem;
         }
+        return n_bits_set;
     }
 
 
@@ -285,10 +281,43 @@ namespace std {
 // for map
 template <std::size_t size>
 bool operator<(const big_int<size>& bn1, const big_int<size>& bn2) {
-    for (size_t i{0}; i < size; ++i) {
-        if (bn1[i] == bn2[i]) continue;
-        return bn1[i] < bn2[i];
+    // for (size_t i{0}; i < size; ++i) {
+    //     if (bn1[i] == bn2[i]) continue;
+    //     return bn1[i] < bn2[i];
+    // }
+    // return false;
+
+    size_t n_rem = size;
+    while (n_rem > sizeof(uint64_t)) {
+        size_t pos = size - n_rem;
+        uint64_t v1, v2;
+        std::memcpy(&v1, &bn1.m_bytes[pos], sizeof(uint64_t));
+        std::memcpy(&v2, &bn2.m_bytes[pos], sizeof(uint64_t));
+        n_rem -= sizeof(uint64_t);
+        if (v1 == v2) continue;
+        return v1 < v2;
     }
+
+    if (n_rem > sizeof(uint32_t)) {
+        size_t pos = size - n_rem;
+        uint32_t v1, v2;
+        std::memcpy(&v1, &bn1.m_bytes[pos], sizeof(uint32_t));
+        std::memcpy(&v2, &bn2.m_bytes[pos], sizeof(uint32_t));
+        n_rem -= sizeof(uint32_t);
+        if (v1 != v2) {
+            return v1 < v2;
+        }
+    }
+
+    while (n_rem > 0) {
+        size_t pos = size - n_rem;
+        if (bn1[pos] == bn2[pos]) {
+            --n_rem;
+            continue;
+        }
+        return bn1[pos] < bn2[pos];
+    }
+
     return false;
 }
 

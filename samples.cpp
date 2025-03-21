@@ -66,14 +66,14 @@ vector<size_t> remove_dups_from_pairs(const vector<pair_t>&);
 template<typename hash_t>
 vector<pair_t> get_dup_pairs_down_triangle(const vector<hash_t>&, const size_t, const uint16_t);
 template<typename hash_t>
-vector<pair_t> down_triangle_worker(const size_t, const size_t, const vector<hash_t>&, const uint16_t);
+vector<pair_t> down_triangle_worker(const size_t, const size_t, const vector<hash_t>&, const vector<uint16_t>&, const uint16_t);
 
 template<typename hash_t>
 vector<size_t> get_dup_inds_rectangle(const vector<hash_t>&, 
         const vector<hash_t>&, const size_t, const uint16_t);
 template<typename hash_t>
 vector<size_t> rectangle_worker(const size_t, const size_t, 
-        const vector<hash_t>&, const vector<hash_t>&, const uint16_t);
+        const vector<hash_t>&, const vector<uint16_t>&, const vector<hash_t>&, const vector<uint16_t>&, const uint16_t);
 
 
 } // namespace
@@ -580,10 +580,13 @@ template<typename hash_t>
 vector<pair_t> get_dup_pairs_down_triangle(const vector<hash_t>& samples, 
         const size_t n_proc, const uint16_t thr) {
 
+    vector<uint16_t> v_nbits_set; v_nbits_set.resize(samples.size());
+    std::transform(samples.begin(), samples.end(), v_nbits_set.begin(), [](const hash_t& hash) {return hash.count_nbits_set();});
+
     vector<std::future<vector<pair_t>>> futures(n_proc);
     for (size_t tid = 0; tid < n_proc; ++tid) {
         futures[tid] = std::async(std::launch::async,
-                down_triangle_worker<hash_t>, tid, n_proc, std::ref(samples), thr);
+                down_triangle_worker<hash_t>, tid, n_proc, std::ref(samples), std::ref(v_nbits_set), thr);
     }
 
     vector<pair_t> res;
@@ -598,25 +601,26 @@ vector<pair_t> get_dup_pairs_down_triangle(const vector<hash_t>& samples,
 
 template<typename hash_t>
 vector<pair_t> down_triangle_worker(const size_t tid, const size_t n_proc, 
-        const vector<hash_t>& samples, const uint16_t thr) {
+        const vector<hash_t>& samples, const vector<uint16_t>& v_nbits_set, const uint16_t thr) {
     size_t n_samples = samples.size();
     // size_t res_size = n_samples * (n_samples + 1) / 2 / n_proc + 1;
     size_t res_size = 20000; // too large will cause bad allocate memory error
     vector<pair_t> res; res.reserve(res_size);
 
-    // cout << "pre-allocated res size of tid " << tid << " is: " << res_size << endl;
-    // cout << "tid " << tid << "res.max_size: " << res.max_size() << endl;
-
     triangle_t coo = triangle_t(tid);
     while (coo.is_in_range(n_samples - 1)) {
         size_t i = coo.get_i() + 1;
         size_t j = coo.get_j();
-        uint16_t diff = hash_t::count_diff_bits(samples[i], samples[j]);
 
-        if (diff < thr) {
-            res.push_back(pair_t(i, j, diff));
-            if (res.size() % 500 == 0) {
-                cout << "\t- result size of tid " << tid << " is : " << res.size() << endl;
+        uint16_t min_diff = std::max(v_nbits_set[i], v_nbits_set[j]) - std::min(v_nbits_set[i], v_nbits_set[j]);
+        if (min_diff < thr) {
+            uint16_t diff = hash_t::count_diff_bits(samples[i], samples[j]);
+
+            if (diff < thr) {
+                res.push_back(pair_t(i, j, diff));
+                if (res.size() % 500 == 0) {
+                    cout << "\t- result size of tid " << tid << " is : " << res.size() << endl;
+                }
             }
         }
 
@@ -631,11 +635,16 @@ vector<pair_t> down_triangle_worker(const size_t tid, const size_t n_proc,
 template<typename hash_t>
 vector<size_t> get_dup_inds_rectangle(const vector<hash_t>& current, 
         const vector<hash_t>& other, const size_t n_proc, const uint16_t thr) {
+
+    vector<uint16_t> v_nbits_set_cur; v_nbits_set_cur.resize(current.size());
+    vector<uint16_t> v_nbits_set_oth; v_nbits_set_oth.resize(other.size());
+    std::transform(current.begin(), current.end(), v_nbits_set_cur.begin(), [](const hash_t& hash) {return hash.count_nbits_set();});
+    std::transform(other.begin(), other.end(), v_nbits_set_oth.begin(), [](const hash_t& hash) {return hash.count_nbits_set();});
     
     using func_t = std::function<vector<size_t>(const size_t&)>; 
     func_t worker_func = std::bind(rectangle_worker<hash_t>, 
-            std::placeholders::_1, n_proc, std::ref(current), 
-            std::ref(other), thr);
+            std::placeholders::_1, n_proc, std::ref(current), std::ref(v_nbits_set_cur),
+            std::ref(other), std::ref(v_nbits_set_oth), thr);
 
     vector<std::future<vector<size_t>>> futures(n_proc);
     for (size_t tid = 0; tid < n_proc; ++tid) {
@@ -654,13 +663,18 @@ vector<size_t> get_dup_inds_rectangle(const vector<hash_t>& current,
 
 template<typename hash_t>
 vector<size_t> rectangle_worker(const size_t tid, const size_t n_proc, 
-        const vector<hash_t>& current, const vector<hash_t>& other, const uint16_t thr) {
+        const vector<hash_t>& current, const vector<uint16_t>& v_nbits_set_cur, 
+        const vector<hash_t>& other, const vector<uint16_t>& v_nbits_set_oth, const uint16_t thr) {
 
     vector<size_t> res;
     size_t n_loop = current.size();
     size_t n_gallery = other.size();
     for (size_t i{tid}; i < n_loop; i += n_proc) {
         for (size_t j{0}; j < n_gallery; ++j) {
+
+            uint16_t min_diff = std::max(v_nbits_set_cur[i], v_nbits_set_oth[j]) - std::min(v_nbits_set_cur[i], v_nbits_set_oth[j]);
+            if (min_diff >= thr) continue;
+
             uint16_t diff = hash_t::count_diff_bits(current[i], other[j]);
             if (diff < thr) {
                 res.push_back(i);
