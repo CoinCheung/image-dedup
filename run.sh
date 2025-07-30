@@ -16,8 +16,8 @@ g++ -O2 $SRC -std=c++20 -o run_dedup -lpthread -lcrypto $(pkg-config --libs --cf
 echo "compile done"
 
 export n_proc=64
-root_dir=../combine/
-prefix=./image_list.txt
+root_dir=/data/cc12m
+prefix=annos_dedup/image_list.txt
 
 rm ${root_dir}/run_dedup
 cp ./run_dedup ${root_dir}/
@@ -73,7 +73,7 @@ pushd ${root_dir}/
 
 
     ## pipeline
-    time ./run_dedup pipeline $n_proc ./tmp/pipeline/in1k.txt 
+    time ./run_dedup pipeline $n_proc ./annos_dedup/image_list.txt 
     # time ./run_dedup pipeline $n_proc ./annos/in1k/in1k.txt
     # time ./run_dedup pipeline $n_proc ./annos/in21k/in21k.txt
     

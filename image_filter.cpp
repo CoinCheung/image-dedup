@@ -72,8 +72,8 @@ auto img_keep_func(const string& pth)->bool {
 
     if (std::min(W, H) < 64) return false;
     if (std::max(W, H) > 2048) return false;
-    if (C != 3) return false;
-    if (ratio > 4.F) return false;
+    if (C > 3) return false;
+    if (ratio > 3.F) return false;
 
     fin.close();
 
