@@ -277,17 +277,9 @@ ostream& operator<<(ostream& os, const big_int<size>& bn) {
 }
 
 
-//// functions for supporting map/unordered_map key
-namespace std {
-// for map
+//// operator< in global namespace (for std::set, std::map key support)
 template <std::size_t size>
 bool operator<(const big_int<size>& bn1, const big_int<size>& bn2) {
-    // for (size_t i{0}; i < size; ++i) {
-    //     if (bn1[i] == bn2[i]) continue;
-    //     return bn1[i] < bn2[i];
-    // }
-    // return false;
-
     size_t n_rem = size;
     while (n_rem > sizeof(uint64_t)) {
         size_t pos = size - n_rem;
@@ -322,7 +314,8 @@ bool operator<(const big_int<size>& bn1, const big_int<size>& bn2) {
     return false;
 }
 
-// for unordered_map
+//// hash specialization for unordered_map key support
+namespace std {
 
 template<size_t size>
 struct hash<big_int<size>> {
