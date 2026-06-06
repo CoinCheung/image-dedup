@@ -41,9 +41,10 @@ struct big_int {
         big_int<size> res{};
         // TODO: HERE should have length check and char range is 0-f
         if (inp.size() != size * 2) {
-            cerr << "[ERROR] hex string should have length of " 
-                << size * 2 << ", but this string has length of " << inp.size() 
+            cerr << "[ERROR] hex string should have length of "
+                << size * 2 << ", but this string has length of " << inp.size()
                 << ": " << inp << endl;
+            return res;
         }
         size_t pos = 0;
         for (size_t i{0}; i < size; ++i) {

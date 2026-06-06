@@ -22,7 +22,7 @@ auto img_keep_func(const string& pth)->bool {
 
     const string HEAD_JPG{'\xff', '\xd8'};
     const string TAIL_JPG{'\xff', '\xd9'};
-    const string HEAD_PNG({'\x90', '\x50', '\x4e', '\x47', '\x0d', '\x0a', '\x1a', '\x0a'});
+    const string HEAD_PNG({'\x89', '\x50', '\x4e', '\x47', '\x0d', '\x0a', '\x1a', '\x0a'});
     const string TAIL_PNG({'\x49', '\x45', '\x4e', '\x44', '\xae', '\x42', '\x60', '\x82'});
     const string POSTF_JPG1("jpg");
     const string POSTF_JPG2("jpeg");

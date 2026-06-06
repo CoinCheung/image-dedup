@@ -31,10 +31,10 @@ public:
 
         using T = decltype(f(args...));
         if constexpr (is_same_v<T, void>) {
-            std::invoke(f, std::forward(args)...); 
+            std::invoke(f, std::forward<Args>(args)...);
             cout << "\t- time used: " << timer.time_duration() << endl;
         } else {
-            T res = std::invoke(f, std::forward(args)...);
+            T res = std::invoke(f, std::forward<Args>(args)...);
             cout << "\t- time used: " << timer.time_duration() << endl;
             return res;
         }

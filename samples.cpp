@@ -408,6 +408,7 @@ void save_samples(const string& savepth, const vector<string>& keys,
 
     stringstream ss;
     size_t n_samples = keys.size();
+    if (n_samples == 0) return;
     for (size_t i{0}; i < n_samples - 1; ++i) {
         ss << keys[i]; 
         ((ss << "," << values[i]), ...);
@@ -547,20 +548,20 @@ vector<size_t> remove_dups_from_pairs(const vector<pair_t>& dup_pairs) {
     vector<size_t> res; 
     res.reserve(n_pairs / 2 + 1);
     size_t max_val = 0;
-    size_t max_ind = 0;
+    std::optional<size_t> max_ind;
     for (auto& el : adj_table) {
         if (el.second.size() > max_val) {
             max_val = el.second.size();
             max_ind = el.first;
         }
     }
-    while (max_val > 0) {
-        size_t rm_ind = max_ind;
+    while (max_ind.has_value()) {
+        size_t rm_ind = max_ind.value();
         res.push_back(rm_ind);
 
         adj_table.erase(rm_ind);
         max_val = 0;
-        max_ind = -1;
+        max_ind = std::nullopt;
         for (auto& el : adj_table) {
             if (el.second.find(rm_ind) != el.second.end()) {
                 el.second.erase(rm_ind);
