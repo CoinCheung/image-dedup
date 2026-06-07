@@ -31,6 +31,9 @@ _READER_CODE = """\
 import sys, warnings, cv2
 from PIL import Image, ImageOps
 from io import BytesIO
+import os
+
+_EXT_TO_FMT = {'jpg': 'JPEG', 'jpeg': 'JPEG', 'png': 'PNG', 'webp': 'WEBP'}
 
 for path in sys.argv[1:]:
     try:
@@ -57,6 +60,11 @@ for path in sys.argv[1:]:
             ImageOps.exif_transpose(img)
     except Exception as e:
         print(f"pil_error:{e}", file=sys.stderr)
+        sys.exit(1)
+
+    ext = os.path.splitext(path)[1].lower().lstrip('.')
+    if ext in _EXT_TO_FMT and img.format != _EXT_TO_FMT[ext]:
+        print(f"fmt_mismatch:{img.format}!={_EXT_TO_FMT[ext]}", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -95,6 +103,12 @@ def _is_harmless_reason(reason):
     if not reason.startswith("c_warning_or_error:"):
         return False
     return _is_harmless_stderr(reason[len("c_warning_or_error:"):])
+
+
+def _is_fmt_mismatch_reason(reason):
+    if not reason.startswith("c_warning_or_error:"):
+        return False
+    return reason[len("c_warning_or_error:"):].startswith("fmt_mismatch:")
 
 
 def _run_batch(reader_script, paths, timeout=60):
@@ -167,13 +181,14 @@ def pass2(paths, out_dir, batch_size, n_workers):
         with os.fdopen(reader_fd, "w") as f:
             f.write(_READER_CODE)
 
-        bad_clevel  = []
-        warn_clevel = []
-        lock        = threading.Lock()
-        batches     = [paths[i:i + batch_size] for i in range(0, len(paths), batch_size)]
-        n_batches   = len(batches)
-        done_count  = [0]
-        t0          = time.time()
+        bad_clevel   = []
+        warn_clevel  = []
+        fmt_mismatch = []
+        lock         = threading.Lock()
+        batches      = [paths[i:i + batch_size] for i in range(0, len(paths), batch_size)]
+        n_batches    = len(batches)
+        done_count   = [0]
+        t0           = time.time()
 
         def _process_batch(batch):
             try:
@@ -184,30 +199,36 @@ def pass2(paths, out_dir, batch_size, n_workers):
 
             bad_results  = []
             warn_results = []
+            fmt_results  = []
             if not ok:
                 found = []
                 _bisect_bad(reader_script, batch, found)
                 for p, reason in found:
-                    if _is_harmless_reason(reason):
+                    if _is_fmt_mismatch_reason(reason):
+                        fmt_results.append(f"{p}\t{reason}")
+                        print(f"  fmt_mismatch: {os.path.basename(p)}  {reason}", flush=True)
+                    elif _is_harmless_reason(reason):
                         warn_results.append(f"{p}\t{reason}")
                         print(f"  warn: {os.path.basename(p)}  {reason}", flush=True)
                     else:
                         bad_results.append(f"{p}\t{reason}")
                         print(f"  bad:  {os.path.basename(p)}  {reason}", flush=True)
-            return bad_results, warn_results
+            return bad_results, warn_results, fmt_results
 
         with ThreadPoolExecutor(max_workers=n_workers) as ex:
             futures = {ex.submit(_process_batch, b): b for b in batches}
             for fut in as_completed(futures):
-                bad, warn = fut.result()
+                bad, warn, fmt = fut.result()
                 with lock:
                     bad_clevel.extend(bad)
                     warn_clevel.extend(warn)
+                    fmt_mismatch.extend(fmt)
                     done_count[0] += 1
                     if done_count[0] % 50 == 0:
                         elapsed = (time.time() - t0) / 60
                         print(f"  {done_count[0]}/{n_batches} batches | "
-                              f"{elapsed:.1f}min | bad={len(bad_clevel)} warn={len(warn_clevel)}",
+                              f"{elapsed:.1f}min | bad={len(bad_clevel)} "
+                              f"warn={len(warn_clevel)} fmt_mismatch={len(fmt_mismatch)}",
                               flush=True)
     finally:
         try:
@@ -217,8 +238,8 @@ def pass2(paths, out_dir, batch_size, n_workers):
 
     elapsed = (time.time() - t0) / 60
     print(f"[catch_non_silent] done in {elapsed:.1f}min | "
-          f"bad={len(bad_clevel)} warn={len(warn_clevel)}", flush=True)
-    return bad_clevel, warn_clevel
+          f"bad={len(bad_clevel)} warn={len(warn_clevel)} fmt_mismatch={len(fmt_mismatch)}", flush=True)
+    return bad_clevel, warn_clevel, fmt_mismatch
 
 
 # ── main ───────────────────────────────────────────────────────────────────────
@@ -232,16 +253,32 @@ def scan(image_list, out_dir, batch_size=2000, n_workers=16):
     print(f"[catch_non_silent] {total} images | batch={batch_size} workers={n_workers}",
           flush=True)
 
-    bad_clevel, warn_clevel = pass2(paths, out_dir, batch_size, n_workers)
+    bad_clevel, warn_clevel, fmt_mismatch = pass2(paths, out_dir, batch_size, n_workers)
 
-    for name, entries in [("bad_clevel.txt", bad_clevel), ("warn_clevel.txt", warn_clevel)]:
+    for name, entries in [("bad_clevel.txt", bad_clevel),
+                          ("warn_clevel.txt", warn_clevel),
+                          ("fmt_mismatch.txt", fmt_mismatch)]:
         p = os.path.join(out_dir, name)
         with open(p, "w") as f:
             f.write("\n".join(entries))
         print(f"  → {p}  ({len(entries)} entries)", flush=True)
 
-    drop_set = {line.split("\t")[0] for line in bad_clevel + warn_clevel}
-    return paths, drop_set, bad_clevel, warn_clevel
+    drop_set = {line.split("\t")[0] for line in bad_clevel + warn_clevel + fmt_mismatch}
+
+    n_removed = len(drop_set)
+    n_remain  = total - n_removed
+    print("", flush=True)
+    print("=" * 50, flush=True)
+    print(f"SUMMARY", flush=True)
+    print(f"  input total   : {total:>8d}", flush=True)
+    print(f"  bad (error)   : {len(bad_clevel):>8d}", flush=True)
+    print(f"  warn (harmless): {len(warn_clevel):>7d}", flush=True)
+    print(f"  fmt mismatch  : {len(fmt_mismatch):>8d}", flush=True)
+    print(f"  total removed : {n_removed:>8d}", flush=True)
+    print(f"  remaining     : {n_remain:>8d}", flush=True)
+    print("=" * 50, flush=True)
+
+    return paths, drop_set, bad_clevel, warn_clevel, fmt_mismatch
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -260,7 +297,7 @@ def main():
         sys.exit(1)
 
     out_dir = os.path.dirname(os.path.abspath(args.out_list))
-    paths, drop_set, bad_clevel, warn_clevel = scan(
+    paths, drop_set, bad_clevel, warn_clevel, fmt_mismatch = scan(
         args.img_list, out_dir, batch_size=args.batch, n_workers=args.workers
     )
 
@@ -269,7 +306,7 @@ def main():
         f.write("\n".join(cleaned))
     n_drop = len(paths) - len(cleaned)
     print(f"  → {args.out_list}  ({len(cleaned)}/{len(paths)} kept, {n_drop} removed: "
-          f"bad={len(bad_clevel)} warn={len(warn_clevel)})")
+          f"bad={len(bad_clevel)} warn={len(warn_clevel)} fmt_mismatch={len(fmt_mismatch)})")
 
 
 if __name__ == "__main__":
