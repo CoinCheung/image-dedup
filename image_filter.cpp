@@ -15,7 +15,7 @@ auto img_keep_func(const string& pth)->bool {
     // jpg/jpeg: starts with ff d8, ends with ff d9
     // png: starts with 89 50 4e 47 0d 0a 1a 0a, and ends with 49 45 4e 44 ae 42 60 82
     // file size less than 50k
-    // shorter side less than 64
+    // shorter side less than 128
     // longer side greater than 2048
     // ratio of longer and shorter greater than 4
     // image channel number is not 3
@@ -70,7 +70,7 @@ auto img_keep_func(const string& pth)->bool {
         ratio = static_cast<float>(W) / static_cast<float>(H);
     }
 
-    if (std::min(W, H) < 64) return false;
+    if (std::min(W, H) < 128) return false;
     if (std::max(W, H) > 2048) return false;
     if (C > 3) return false;
     if (ratio > 3.F) return false;

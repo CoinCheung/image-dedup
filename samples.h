@@ -59,8 +59,8 @@ public:
 
 
 private:
-    const uint16_t thr_dhash = 25; // 200/2048
-    const uint16_t thr_phash = 40; // original: 35
+    const uint16_t thr_dhash = 60;
+    const uint16_t thr_phash = 50;
 
     vector<string> keys;
     vector<dhash_t> v_dhash;
