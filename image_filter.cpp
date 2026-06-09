@@ -62,6 +62,7 @@ auto img_keep_func(const string& pth)->bool {
 
     // image w/h/c/ratio
     cv::Mat im = cv::imread(pth);
+    if (im.empty()) return false;
     int64_t H = im.rows;
     int64_t W = im.cols;
     int64_t C = im.channels();
